@@ -11,7 +11,6 @@ import {
   Text,
   View,
 } from "react-native";
-import JoinEventButton from "../buttons/JoinEventButton";
 import CategoryBadge from "./CategoryBadge";
 import { UrbanBookmark } from "./UrbanBookmark";
 const { height, width } = Dimensions.get("window");
@@ -534,7 +533,20 @@ export default function EventCard({
                         </Text>
                       </View>
                     </View>
-                    <JoinEventButton eventId={id} variant="card" />
+                    <Pressable
+                      style={[
+                        styles.urbanCTA,
+                        { backgroundColor: accentColor },
+                      ]}
+                      onPress={handleJoin}
+                    >
+                      <Text style={styles.urbanCTAText}>JOIN</Text>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={16}
+                        color="#FFFFFF"
+                      />
+                    </Pressable>
                   </View>
                 </View>
               </View>

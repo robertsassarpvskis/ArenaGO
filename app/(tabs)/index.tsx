@@ -1,4 +1,4 @@
-// app/index.tsx  (EventScreen) — fetches liked-events and seeds useEventSave
+// app/index.tsx  (EventScreen)
 
 import { Container } from "@/components/common/Container";
 import { useAuth } from "@/hooks/context/AuthContext";
@@ -13,6 +13,7 @@ import { BlurView } from "expo-blur";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   StyleSheet,
   Text,
@@ -28,11 +29,20 @@ import {
   getRecommendedEvents,
   getUserCreatedEvents,
 } from "../../hooks/events/getEvents";
+import {
+  useCancelEvent,
+  useDeleteEvent,
+  useKickParticipant,
+  useLeaveEvent,
+  useStartEvent,
+} from "../../hooks/events/useEventActions";
+import AuthorEventModal from "../modal/AuthorEventModal";
 import EventModal from "../modal/EventModal";
 
 const BASE_URL = "http://217.182.74.113:30080";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
 type CardKind = "created" | "participated" | "recommended";
 
 interface ListItem {
@@ -41,7 +51,8 @@ interface ListItem {
   joinedAt?: string;
 }
 
-// ── API: fetch liked events ───────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────────────────────
+
 async function getUserLikedEvents(
   username: string,
   token: string,
@@ -49,31 +60,17 @@ async function getUserLikedEvents(
   try {
     const res = await fetch(
       `${BASE_URL}/api/Users/${encodeURIComponent(username)}/liked-events`,
-      {
-        headers: {
-          accept: "text/plain",
-          Authorization: `Bearer ${token}`,
-        },
-      },
+      { headers: { accept: "text/plain", Authorization: `Bearer ${token}` } },
     );
-
-    if (!res.ok) {
-      console.warn("[EventScreen] liked-events fetch failed:", res.status);
-      return [];
-    }
-
+    if (!res.ok) return [];
     const text = await res.text().catch(() => "");
     if (!text) return [];
-
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
-      console.warn("[EventScreen] liked-events JSON parse failed");
       return [];
     }
-
-    // Normalise: accept array or object with known wrapper keys
     if (Array.isArray(parsed)) return parsed as LikedEventItem[];
     if (parsed && typeof parsed === "object") {
       const p = parsed as Record<string, unknown>;
@@ -81,15 +78,14 @@ async function getUserLikedEvents(
         if (Array.isArray(p[key])) return p[key] as LikedEventItem[];
       }
     }
-
     return [];
-  } catch (err) {
-    console.error("[EventScreen] getUserLikedEvents error:", err);
+  } catch {
     return [];
   }
 }
 
 // ── Mapper ────────────────────────────────────────────────────────────────────
+
 const mapEventToCardProps = (event: ApiEvent) => ({
   id: event.eventId,
   title: event.title,
@@ -103,12 +99,40 @@ const mapEventToCardProps = (event: ApiEvent) => ({
   location: event.locationName ?? "Location TBA",
 });
 
+// ── Shared event shape builder ────────────────────────────────────────────────
+
+const buildEventShape = (event: ApiEvent) => ({
+  id: event.eventId,
+  description: event.description,
+  image: event.thumbnail ?? undefined,
+  title: event.title,
+  category: event.interest?.name ?? "General",
+  time: event.startScheduledTo,
+  location: event.location ?? "Location TBA",
+  locationName: event.locationName ?? "Location TBA",
+  distance: "—",
+  author: event.author ? { username: event.author.username } : null,
+  attendees: event.participantsSummary.currentCount,
+  spotsLeft: event.participantsSummary.maxCount ?? 0,
+  maxParticipants: event.participantsSummary.maxCount ?? null,
+  participantsPreview: event.participantsSummary.participantsPreview,
+  status: (event as any).status ?? "active",
+});
+
 // ── Screen ────────────────────────────────────────────────────────────────────
+
 export default function EventScreen() {
   const { user } = useAuth();
   const { joinEvent } = useJoinEvent(user?.accessToken || null);
-
-  // Single source of truth for saved/liked state
+  const { startEvent, isStarting } = useStartEvent(user?.accessToken || null);
+  const { cancelEvent, isCancelling } = useCancelEvent(
+    user?.accessToken || null,
+  );
+  const { deleteEvent, isDeleting } = useDeleteEvent(user?.accessToken || null);
+  const { kickParticipant, isKicking } = useKickParticipant(
+    user?.accessToken || null,
+  );
+  const { leaveEvent, isLeaving } = useLeaveEvent(user?.accessToken || null);
   const { savedCount, isEventSaved, saveEvent, unsaveEvent, hydrateFromData } =
     useEventSave();
 
@@ -160,6 +184,7 @@ export default function EventScreen() {
   }, [user?.accessToken]);
 
   // ── Build list ─────────────────────────────────────────────────────────────
+
   const buildList = (
     recommended: ApiEvent[],
     createdIds: Set<string>,
@@ -182,7 +207,6 @@ export default function EventScreen() {
         placed.add(event.eventId);
       }
     }
-
     for (const event of recommended) {
       if (
         participationMap.has(event.eventId) &&
@@ -197,7 +221,6 @@ export default function EventScreen() {
         placed.add(event.eventId);
       }
     }
-
     for (const event of recommended) {
       if (!placed.has(event.eventId)) {
         result.push({ kind: "recommended", event });
@@ -213,7 +236,8 @@ export default function EventScreen() {
     );
   };
 
-  // ── Fetch — now includes liked-events ─────────────────────────────────────
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+
   const fetchEvents = async () => {
     try {
       setRefreshing(true);
@@ -230,7 +254,6 @@ export default function EventScreen() {
           getUserLikedEvents(user?.userName || "", user?.accessToken || ""),
         ]);
 
-      // Seed useEventSave store with fresh server data (persists to AsyncStorage)
       hydrateFromData(likedEvents);
 
       const createdIds = new Set(createdEvents.map((e) => e.eventId));
@@ -249,6 +272,8 @@ export default function EventScreen() {
     }
   };
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
   const handleFilterChange = (filterId: string) => {
     setActiveFilter(filterId);
     setListItems(
@@ -259,12 +284,13 @@ export default function EventScreen() {
   const handleEventPress = async (eventId: string) => {
     try {
       setModalLoading(true);
+      setModalVisible(true);
       const fullEvent = await getEventById(eventId, user?.accessToken || "");
       setSelectedEvent(fullEvent);
-      setModalVisible(true);
     } catch (err) {
       console.error("Failed to fetch event details:", err);
       setError("Failed to load event details");
+      setModalVisible(false);
     } finally {
       setModalLoading(false);
     }
@@ -275,7 +301,6 @@ export default function EventScreen() {
     setSelectedEvent(null);
   };
 
-  // ── Modal save toggle ─────────────────────────────────────────────────────
   const handleToggleSave = () => {
     if (!selectedEvent) return;
     if (isEventSaved(selectedEvent.eventId)) {
@@ -292,23 +317,96 @@ export default function EventScreen() {
   const handleJoinEvent = async (eventId: string) => {
     try {
       await joinEvent(eventId);
-      setModalVisible(false);
+      handleCloseModal();
       fetchEvents();
     } catch (err: any) {
       console.error("Failed to join event:", err);
+      Alert.alert("Error", "Could not join event. Please try again.");
     }
   };
 
   const handleLeaveEvent = async (eventId: string) => {
-    try {
-      console.log("Leave event:", eventId);
+    const ok = await leaveEvent(eventId);
+    if (ok) {
+      handleCloseModal();
       fetchEvents();
-    } catch (err) {
-      console.error("Failed to leave event:", err);
+    } else {
+      Alert.alert("Error", "Could not leave event. Please try again.");
     }
   };
 
+  const handleStartEvent = async (eventId: string) => {
+    const result = await startEvent(eventId);
+    if (result) {
+      // Re-fetch full event so modal reflects "started" status immediately
+      try {
+        const updated = await getEventById(eventId, user?.accessToken || "");
+        setSelectedEvent(updated);
+      } catch {
+        /* non-critical */
+      }
+      fetchEvents();
+    } else {
+      Alert.alert("Error", "Could not start event. Please try again.");
+    }
+  };
+
+  const handleCancelEvent = async (eventId: string) => {
+    const result = await cancelEvent(eventId);
+    if (result) {
+      // Update modal in-place so user sees "CANCELLED" stamp without closing
+      try {
+        const updated = await getEventById(eventId, user?.accessToken || "");
+        setSelectedEvent(updated);
+      } catch {
+        /* non-critical */
+      }
+      fetchEvents();
+    } else {
+      Alert.alert("Error", "Could not cancel event. Please try again.");
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    const ok = await deleteEvent(eventId);
+    if (ok) {
+      handleCloseModal();
+      fetchEvents();
+    } else {
+      Alert.alert("Error", "Could not delete event. Please try again.");
+    }
+  };
+
+  const handleKickParticipant = async (eventId: string, username: string) => {
+    const ok = await kickParticipant(eventId, username);
+    if (ok) {
+      // Refresh modal participants list in-place
+      try {
+        const updated = await getEventById(eventId, user?.accessToken || "");
+        setSelectedEvent(updated);
+      } catch {
+        /* non-critical */
+      }
+      fetchEvents();
+    } else {
+      Alert.alert("Error", "Could not remove participant. Please try again.");
+    }
+  };
+
+  // ── View mode ──────────────────────────────────────────────────────────────
+
+  const viewMode = selectedEvent
+    ? selectedEvent.author?.username === user?.userName
+      ? "author"
+      : allParticipations.some(
+            (p) => p.resourceSummary.eventId === selectedEvent.eventId,
+          )
+        ? "participant"
+        : "basic"
+    : "basic";
+
   // ── Render item ───────────────────────────────────────────────────────────
+
   const renderItem = ({ item }: { item: ListItem }) => {
     const props = mapEventToCardProps(item.event);
 
@@ -320,7 +418,6 @@ export default function EventScreen() {
         />
       );
     }
-
     if (item.kind === "participated") {
       return (
         <ParticipatedEventCard
@@ -331,8 +428,6 @@ export default function EventScreen() {
         />
       );
     }
-
-    // UrbanBookmark inside EventCard reads isEventSaved from the store directly
     return (
       <EventCard
         {...props}
@@ -343,6 +438,7 @@ export default function EventScreen() {
   };
 
   // ── Loading / error ───────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <Container>
@@ -358,7 +454,7 @@ export default function EventScreen() {
     );
   }
 
-  if (error) {
+  if (error && !modalVisible) {
     return (
       <Container>
         <View style={styles.centered}>
@@ -367,6 +463,8 @@ export default function EventScreen() {
       </Container>
     );
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.container}>
@@ -392,56 +490,69 @@ export default function EventScreen() {
         )}
       />
 
-      {modalVisible && selectedEvent && (
+      {/* ── Modals ── */}
+      {modalVisible && (
         <View style={styles.modalOverlay}>
           <BlurView intensity={40} tint="light" style={styles.blurBackground} />
-          <EventModal
-            visible={modalVisible}
-            viewMode={
-              selectedEvent.author?.username === user?.userName
-                ? "author"
-                : allParticipations.some(
-                      (p) =>
-                        p.resourceSummary.eventId === selectedEvent.eventId,
-                    )
-                  ? "participant"
-                  : "basic"
-            }
-            event={{
-              id: selectedEvent.eventId,
-              description: selectedEvent.description,
-              image: selectedEvent.thumbnail ?? undefined,
-              title: selectedEvent.title,
-              category: selectedEvent.interest?.name ?? "General",
-              time: selectedEvent.startScheduledTo,
-              location: selectedEvent.location ?? "Location TBA",
-              locationName: selectedEvent.locationName ?? "Location TBA",
-              distance: "—",
-              author: selectedEvent.author
-                ? { username: selectedEvent.author.username }
-                : null,
-              attendees: selectedEvent.participantsSummary.currentCount,
-              spotsLeft: selectedEvent.participantsSummary.maxCount ?? 0,
-              participantsPreview:
-                selectedEvent.participantsSummary.participantsPreview,
-            }}
-            accessToken={user?.accessToken || ""}
-            onClose={handleCloseModal}
-            onJoin={() => {
-              setModalVisible(false);
-              fetchEvents();
-            }}
-            onLeave={() => handleLeaveEvent(selectedEvent.eventId)}
-            isSaved={isEventSaved(selectedEvent.eventId)}
-            onToggleSave={handleToggleSave}
-            isLoading={modalLoading}
-            onEventUpdated={fetchEvents}
-          />
+
+          {/*
+           * While the event is still loading (selectedEvent not yet set),
+           * render a single lightweight loading modal so we never pass
+           * event=null to a modal that tries to read event.time etc.
+           */}
+          {(!selectedEvent || modalLoading) && (
+            <EventModal
+              visible={modalVisible}
+              viewMode="basic"
+              event={null}
+              isLoading={true}
+              isSaved={false}
+              onToggleSave={() => {}}
+              onClose={handleCloseModal}
+              onJoin={() => {}}
+            />
+          )}
+
+          {/* Author modal — only rendered once selectedEvent is populated */}
+          {selectedEvent && !modalLoading && viewMode === "author" && (
+            <AuthorEventModal
+              visible={modalVisible}
+              event={buildEventShape(selectedEvent)}
+              accessToken={user?.accessToken || ""}
+              isLoading={false}
+              isSaved={isEventSaved(selectedEvent.eventId)}
+              onToggleSave={handleToggleSave}
+              onClose={handleCloseModal}
+              onEventUpdated={fetchEvents}
+              onDeleteEvent={handleDeleteEvent}
+            />
+          )}
+
+          {/* Participant / basic modal — only rendered once selectedEvent is populated */}
+          {selectedEvent &&
+            !modalLoading &&
+            (viewMode === "participant" || viewMode === "basic") && (
+              <EventModal
+                visible={modalVisible}
+                viewMode={viewMode}
+                event={buildEventShape(selectedEvent)}
+                accessToken={user?.accessToken || ""}
+                isLoading={isLeaving}
+                isSaved={isEventSaved(selectedEvent.eventId)}
+                onToggleSave={handleToggleSave}
+                onClose={handleCloseModal}
+                onJoin={() => handleJoinEvent(selectedEvent.eventId)}
+                onLeave={() => handleLeaveEvent(selectedEvent.eventId)}
+                onEventUpdated={fetchEvents}
+              />
+            )}
         </View>
       )}
     </View>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fffcf4" },

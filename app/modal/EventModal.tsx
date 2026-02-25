@@ -595,7 +595,7 @@ export default function EventModal({
                       )}
                     </View>
                   </View>
-                  {(event!.participantsPreview?.length ?? 0) > 0 && (
+                  {/* {(event!.participantsPreview?.length ?? 0) > 0 && (
                     <View
                       style={[
                         ES.seeAllChip,
@@ -616,7 +616,7 @@ export default function EventModal({
                         color={isParticipant ? C.joined : C.accent}
                       />
                     </View>
-                  )}
+                  )} */}
                 </Pressable>
 
                 <Divider />

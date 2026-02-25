@@ -973,39 +973,7 @@ export default function AuthorEventModal({
                 ) : (
                   /* ══════ VIEW MODE ══════ */
                   <>
-                    {/* ── Stats bar (author-only) ── */}
-                    <View style={AS.statsBar}>
-                      <View style={AS.statItem}>
-                        <Text style={AS.statValue}>{event!.attendees}</Text>
-                        <Text style={AS.statLabel}>GOING</Text>
-                      </View>
-                      <View style={AS.statDivider} />
-                      <View style={AS.statItem}>
-                        <Text style={AS.statValue}>
-                          {event!.maxParticipants ?? "10"}
-                        </Text>
-                        <Text style={AS.statLabel}>CAPACITY</Text>
-                      </View>
-                      <View style={AS.statDivider} />
-                      <View style={AS.statItem}>
-                        <Text
-                          style={[
-                            AS.statValue,
-                            {
-                              color: isStarted
-                                ? C.joined
-                                : isCancelled
-                                  ? C.red
-                                  : C.amber,
-                            },
-                          ]}
-                        >
-                          {isStarted ? "LIVE" : isCancelled ? "OFF" : "SOON"}
-                        </Text>
-                        <Text style={AS.statLabel}>STATUS</Text>
-                      </View>
-                    </View>
-                    <Divider />
+                 
 
                     {/* Title block */}
                     <View
@@ -1047,6 +1015,41 @@ export default function AuthorEventModal({
                         <Text style={sharedS.timeFormatText}>{timeFormat}</Text>
                       </View>
                     </View>
+                                        <Divider />
+
+                       {/* ── Stats bar (author-only) ── */}
+                    <View style={AS.statsBar}>
+                      <View style={AS.statItem}>
+                        <Text style={AS.statValue}>{event!.attendees}</Text>
+                        <Text style={AS.statLabel}>GOING</Text>
+                      </View>
+                      <View style={AS.statDivider} />
+                      <View style={AS.statItem}>
+                        <Text style={AS.statValue}>
+                          {event!.maxParticipants ?? "10"}
+                        </Text>
+                        <Text style={AS.statLabel}>CAPACITY</Text>
+                      </View>
+                      <View style={AS.statDivider} />
+                      <View style={AS.statItem}>
+                        <Text
+                          style={[
+                            AS.statValue,
+                            {
+                              color: isStarted
+                                ? C.joined
+                                : isCancelled
+                                  ? C.red
+                                  : C.amber,
+                            },
+                          ]}
+                        >
+                          {isStarted ? "LIVE" : isCancelled ? "OFF" : "SOON"}
+                        </Text>
+                        <Text style={AS.statLabel}>STATUS</Text>
+                      </View>
+                    </View>
+                    <Divider />
                     {/* ABOUT */}
                     {!!event!.description && (
                       <>

@@ -1,4 +1,3 @@
-import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -398,6 +397,8 @@ export default function WelcomeScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
+              <View style={styles.divider} />
+
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={() => router.push("/(auth)/LoginScreen")}
@@ -411,34 +412,21 @@ export default function WelcomeScreen() {
             </TouchableOpacity>
             <View style={styles.dividerContainer}>
               <View style={styles.divider} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.divider} />
+    
             </View>
 
             {/* Social Sign-In Buttons */}
-            <View style={styles.socialContainer}>
-              {/* Apple */}
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.7}>
-                <Ionicons name="logo-apple" size={22} color="#000000" />
-                <Text style={styles.socialButtonText}>Apple</Text>
-              </TouchableOpacity>
-
-              {/* Google */}
-              <TouchableOpacity style={styles.socialButton} activeOpacity={0.7}>
-                <AntDesign name="google" size={22} />
-                <Text style={styles.socialButtonText}>Google</Text>
-              </TouchableOpacity>
-            </View>
+          
           </Animated.View>
 
           {/* Footer */}
-          <Animated.View style={[styles.footer, { opacity: footerFade }]}>
+          {/* <Animated.View style={[styles.footer, { opacity: footerFade }]}>
             <Text style={styles.footerText}>
               By continuing, you agree to our{" "}
               <Text style={styles.footerLink}>Terms</Text> &{" "}
               <Text style={styles.footerLink}>Privacy Policy</Text>
             </Text>
-          </Animated.View>
+          </Animated.View> */}
         </View>
       </LinearGradient>
       <StatusBar style="dark" animated />

@@ -5,11 +5,10 @@ import React from "react";
 import {
   Animated,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../hooks/context/AuthContext";
@@ -90,7 +89,7 @@ const ModernHeader: React.FC<Props> = ({
   // Heights
   const COLLAPSED = 58 + insets.top;
   // top bar + hero + time row + filter row + padding
-  const EXPANDED = 248 + insets.top;
+  const EXPANDED = 150 + insets.top;
 
   // ── Animations ──────────────────────────────────────────────────────────
   const headerHeight = scrollY.interpolate({
@@ -145,7 +144,6 @@ const ModernHeader: React.FC<Props> = ({
         >
           {/* Brand wordmark */}
           <View style={styles.brandRow}>
-            <View style={styles.brandDot} />
             <Text style={styles.appName}>ArenaGO</Text>
           </View>
 
@@ -159,9 +157,7 @@ const ModernHeader: React.FC<Props> = ({
                 </View>
               </View>
             )}
-            <TouchableOpacity style={styles.iconBtn} activeOpacity={0.75}>
-              <Ionicons name="search-outline" size={20} color="#FFF" />
-            </TouchableOpacity>
+          
             <TouchableOpacity style={styles.avatarBtn} activeOpacity={0.75}>
               <Text style={styles.avatarText}>
                 {username.charAt(0).toUpperCase()}
@@ -181,17 +177,14 @@ const ModernHeader: React.FC<Props> = ({
           ]}
         >
           <Text style={styles.greeting}>{greeting},</Text>
-          <Text style={styles.title}>{username} 👋</Text>
+          <Text style={styles.title}>{username}!</Text>
           <View style={styles.locationRow}>
-            <Ionicons name="location-sharp" size={12} color={COLORS.textSoft} />
-            <Text style={styles.locationText}>Near you</Text>
-            <View style={styles.dividerDot} />
-            <Text style={styles.locationText}>Live events</Text>
+
           </View>
         </Animated.View>
 
         {/* ── TIME FILTER ──────────────────────────────────────────────── */}
-        <Animated.View
+        {/* <Animated.View
           style={[
             styles.rowWrapper,
             {
@@ -225,10 +218,10 @@ const ModernHeader: React.FC<Props> = ({
               );
             })}
           </View>
-        </Animated.View>
+        </Animated.View> */}
 
         {/* ── CATEGORY FILTERS ─────────────────────────────────────────── */}
-        <Animated.View
+        {/* <Animated.View
           style={[
             styles.rowWrapper,
             {
@@ -268,7 +261,7 @@ const ModernHeader: React.FC<Props> = ({
               );
             })}
           </ScrollView>
-        </Animated.View>
+        </Animated.View> */}
       </View>
 
       <StatusBar style="light" />

@@ -2,17 +2,18 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 // ─── Tokens (mirrors EventModal exactly) ─────────────────────────────────────
@@ -48,6 +49,8 @@ export interface UserListModalProps {
   onClose: () => void;
   participants: UserListParticipant[];
   total: number;
+  /** Show a loading skeleton while participants are being fetched */
+  isLoading?: boolean;
   title?: string;
   subtitle?: string;
   accentColor?: string;
@@ -145,6 +148,33 @@ const Divider = () => (
   />
 );
 
+// ─── Loading skeleton rows ────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  const pulse = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View style={[S.row, { opacity: pulse }]}>
+      {/* Avatar placeholder */}
+      <View style={[S.skeletonAvatar, { backgroundColor: C.divider }]} />
+      {/* Text placeholders */}
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={[S.skeletonLine, { width: "55%", backgroundColor: C.divider }]} />
+        <View style={[S.skeletonLine, { width: "35%", backgroundColor: C.divider }]} />
+      </View>
+    </Animated.View>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function UserListModal({
@@ -152,6 +182,7 @@ export default function UserListModal({
   onClose,
   participants,
   total,
+  isLoading = false,
   title = "WHO'S GOING",
   subtitle,
   accentColor = C.accent,
@@ -252,12 +283,16 @@ export default function UserListModal({
           </View>
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {/* Count badge */}
-            <View style={[S.countBadge, { backgroundColor: accentBg }]}>
-              <Text style={[S.countBadgeText, { color: accentColor }]}>
-                {total}
-              </Text>
-            </View>
+            {/* Loading spinner OR count badge */}
+            {isLoading ? (
+              <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 4 }} />
+            ) : (
+              <View style={[S.countBadge, { backgroundColor: accentBg }]}>
+                <Text style={[S.countBadgeText, { color: accentColor }]}>
+                  {total}
+                </Text>
+              </View>
+            )}
             {/* Close */}
             <Pressable
               style={S.closeBtn}
@@ -272,8 +307,8 @@ export default function UserListModal({
         {/* Heavy divider */}
         <View style={S.heavyDivider} />
 
-        {/* Search — appears when > 4 participants */}
-        {participants.length > 4 && (
+        {/* Search — appears when > 4 participants or already fetched */}
+        {(!isLoading && participants.length > 4) && (
           <View style={[S.searchWrap, { borderColor: accentColor + "50" }]}>
             <Ionicons name="search-outline" size={15} color={C.muted} />
             <TextInput
@@ -304,7 +339,20 @@ export default function UserListModal({
           keyboardShouldPersistTaps="handled"
           bounces
         >
-          {filtered.length === 0 ? (
+          {/* Loading state — show skeleton rows */}
+          {isLoading && (
+            <>
+              {[...Array(5)].map((_, i) => (
+                <React.Fragment key={`skel-${i}`}>
+                  <SkeletonRow />
+                  {i < 4 && <Divider />}
+                </React.Fragment>
+              ))}
+            </>
+          )}
+
+          {/* Populated list */}
+          {!isLoading && filtered.length === 0 ? (
             <View style={S.emptyState}>
               <View style={[S.emptyIcon, { backgroundColor: accentBg }]}>
                 <Ionicons name="people-outline" size={28} color={accentColor} />
@@ -315,7 +363,7 @@ export default function UserListModal({
               </Text>
             </View>
           ) : (
-            filtered.map((p, i) => (
+            !isLoading && filtered.map((p, i) => (
               <React.Fragment key={p.username}>
                 <Pressable
                   style={({ pressed }) => [
@@ -531,5 +579,16 @@ const S = StyleSheet.create({
     fontSize: 13,
     color: C.muted,
     fontWeight: "600",
+  },
+
+  // Skeleton
+  skeletonAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 52 * 0.28,
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
   },
 });

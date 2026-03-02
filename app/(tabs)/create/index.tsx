@@ -10,7 +10,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import MapView, { Marker } from "react-native-maps";
-import { SvgUri } from "react-native-svg"; // ← NEW
+import { SvgUri } from "react-native-svg";
 import { Container } from "../../../components/common/Container";
 import {
   CategoryOption,
@@ -22,7 +22,7 @@ import {
 } from "../../../hooks/events/useEventsCreate";
 import { fetchInterests } from "../../../hooks/interests/getInterests";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,33 +35,13 @@ import {
   View,
 } from "react-native";
 
-// Fallback categories (no icon URLs, so Ionicons will be used as fallback)
+// Fallback categories
 const CATEGORIES: CategoryOption[] = [
-  {
-    id: "1",
-    label: "Sports",
-    color: { r: 255, g: 107, b: 88, a: 1 },
-  },
-  {
-    id: "2",
-    label: "Music",
-    color: { r: 255, g: 138, b: 115, a: 1 },
-  },
-  {
-    id: "3",
-    label: "Networking",
-    color: { r: 16, g: 185, b: 129, a: 1 },
-  },
-  {
-    id: "4",
-    label: "Workshop",
-    color: { r: 107, g: 114, b: 128, a: 1 },
-  },
-  {
-    id: "5",
-    label: "Social",
-    color: { r: 239, g: 68, b: 68, a: 1 },
-  },
+  { id: "1", label: "Sports", color: { r: 255, g: 107, b: 88, a: 1 } },
+  { id: "2", label: "Music", color: { r: 255, g: 138, b: 115, a: 1 } },
+  { id: "3", label: "Networking", color: { r: 16, g: 185, b: 129, a: 1 } },
+  { id: "4", label: "Workshop", color: { r: 107, g: 114, b: 128, a: 1 } },
+  { id: "5", label: "Social", color: { r: 239, g: 68, b: 68, a: 1 } },
 ];
 
 const PARTICIPANT_PRESETS = [
@@ -73,11 +53,19 @@ const PARTICIPANT_PRESETS = [
   { value: "50", label: "50+" },
 ];
 
+type NominatimResult = {
+  display_name: string;
+  lat: string;
+  lon: string;
+};
+
 export default function CreateEvent() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { createEvent, loading } = useCreateEvent(user?.accessToken || null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const mapRef = useRef<MapView>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [eventTitle, setEventTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -101,6 +89,13 @@ export default function CreateEvent() {
   const [locationName, setLocationName] = useState("");
   const [fetchingLocationName, setFetchingLocationName] = useState(false);
 
+  // Location search + autocomplete
+  const [locationSearch, setLocationSearch] = useState("");
+  const [searchingLocation, setSearchingLocation] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState("");
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [extrasExpanded, setExtrasExpanded] = useState(false);
 
   useEffect(() => {
@@ -119,44 +114,98 @@ export default function CreateEvent() {
     }
   }, [description, category, maxParticipants, eventImage]);
 
-  const handleMapPress = async (coords: {
+  // Debounced suggestions fetch — fires after 350ms of no typing
+  const fetchSuggestions = (query: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearchingLocation(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
+        );
+        const data: NominatimResult[] = await res.json();
+        setSuggestions(data || []);
+        setShowSuggestions(true);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setSearchingLocation(false);
+      }
+    }, 350);
+  };
+
+  const handleLocationSearchChange = (text: string) => {
+    setLocationSearch(text);
+    setLocationSearchError("");
+    fetchSuggestions(text);
+  };
+
+  const handleSuggestionSelect = (item: NominatimResult) => {
+    const coords = {
+      latitude: parseFloat(item.lat),
+      longitude: parseFloat(item.lon),
+    };
+    setLocation(coords);
+    const parts = item.display_name.split(",");
+    const label = parts.slice(0, 2).join(",").trim();
+    setLocationName(label);
+    setLocationSearch(label);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    mapRef.current?.animateToRegion(
+      { ...coords, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+      600,
+    );
+  };
+
+  // Reverse-geocode a map tap → human readable name
+  const reverseGeocode = async (coords: {
     latitude: number;
     longitude: number;
   }) => {
-    setLocation(coords);
     setFetchingLocationName(true);
-
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`,
       );
       const data = await res.json();
-
       const address = data.address;
-      let finalLocationName = "";
-
+      let name = "";
       if (address?.building || address?.amenity || address?.leisure) {
-        finalLocationName =
-          address.building || address.amenity || address.leisure;
+        name = address.building || address.amenity || address.leisure;
       } else if (address?.road) {
-        const houseNumber = address.house_number || "";
-        finalLocationName = `${houseNumber} ${address.road}`.trim();
+        name = `${address.house_number || ""} ${address.road}`.trim();
       } else if (address?.neighbourhood || address?.suburb) {
-        finalLocationName = address.neighbourhood || address.suburb;
+        name = address.neighbourhood || address.suburb;
       } else if (address?.city || address?.town || address?.village) {
-        finalLocationName = address.city || address.town || address.village;
+        name = address.city || address.town || address.village;
       } else {
-        finalLocationName = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+        name = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
       }
-
-      setLocationName(finalLocationName);
+      setLocationName(name);
+      setLocationSearch(name);
     } catch {
-      setLocationName(
-        `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`,
-      );
+      const fallback = `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+      setLocationName(fallback);
+      setLocationSearch(fallback);
     } finally {
       setFetchingLocationName(false);
     }
+  };
+
+  const handleMapPress = async (coords: {
+    latitude: number;
+    longitude: number;
+  }) => {
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setLocation(coords);
+    await reverseGeocode(coords);
   };
 
   const handleDateTimeChange = (selection: DateTimeSelection) => {
@@ -165,19 +214,16 @@ export default function CreateEvent() {
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
     if (status !== "granted") {
       Alert.alert("Permission needed", "Please grant camera roll permissions");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [16, 9],
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setEventImage({
@@ -223,10 +269,7 @@ export default function CreateEvent() {
       return;
     }
     if (!location) {
-      Alert.alert(
-        "Missing Location",
-        "Please tap on the map to set event location",
-      );
+      Alert.alert("Missing Location", "Please set an event location");
       return;
     }
 
@@ -239,10 +282,7 @@ export default function CreateEvent() {
       locationName:
         locationName ||
         `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`,
-      location: {
-        latitude: location.latitude,
-        longitude: location.longitude,
-      },
+      location: { latitude: location.latitude, longitude: location.longitude },
       startScheduledTo: dateTimeSelection.startDateTime.toISOString(),
       endScheduledTo: dateTimeSelection.endDateTime.toISOString(),
     };
@@ -254,7 +294,6 @@ export default function CreateEvent() {
       ]);
     } catch (err: any) {
       console.error("Create event error:", err);
-
       let errorMessage = "Failed to create event. Please try again.";
       if (err.response?.status === 405) {
         errorMessage = "Method not allowed. Please check the API endpoint.";
@@ -263,30 +302,30 @@ export default function CreateEvent() {
       } else if (err.message) {
         errorMessage = err.message;
       }
-
       Alert.alert("Error", errorMessage);
     }
   };
 
   const displayCategories = categories.length > 0 ? categories : CATEGORIES;
-
   const selectedCategory =
     categories.find((c) => c.id === category) ||
     CATEGORIES.find((c) => c.id === category);
 
   const canCreate =
     eventTitle.trim() && dateTimeSelection && location && !loading;
-
   const hasExtrasData = !!(
     description ||
     category ||
     maxParticipants ||
     eventImage
   );
-
   const isCustomParticipant =
     maxParticipants &&
     !PARTICIPANT_PRESETS.some((p) => p.value === maxParticipants);
+
+  // Shorten a Nominatim display_name to first 3 parts
+  const shortenSuggestion = (display_name: string) =>
+    display_name.split(",").slice(0, 3).join(",").trim();
 
   return (
     <>
@@ -333,20 +372,30 @@ export default function CreateEvent() {
               />
             </View>
 
-            {/* Category */}
+            {/* ─────────────────────────────────────────────────────────
+                CATEGORY — full wrapping 3-column grid
+                Shows ALL user interests. Each card: icon bubble + label.
+                Selected card fills with the category's own colour.
+            ───────────────────────────────────────────────────────── */}
             <View style={styles.field}>
               <View style={styles.fieldHeader}>
                 <View style={styles.iconWrapperRequired}>
                   <Ionicons name="grid-outline" size={20} color="#fff" />
                 </View>
-                <Text
-                  style={[
-                    styles.fieldTitleRequired,
-                    category && styles.fieldTitleOptionalActive,
-                  ]}
-                >
-                  Choose interest category
-                </Text>
+                <View style={styles.fieldHeaderText}>
+                  <Text style={styles.fieldTitleRequired}>
+                    Interest category
+                  </Text>
+                  {selectedCategory ? (
+                    <Text style={styles.fieldSubtitleGreen}>
+                      {selectedCategory.label} selected ✓
+                    </Text>
+                  ) : (
+                    <Text style={styles.fieldSubtitleMuted}>
+                      {displayCategories.length} categories · pick one
+                    </Text>
+                  )}
+                </View>
               </View>
 
               <View style={styles.categoryGrid}>
@@ -359,41 +408,62 @@ export default function CreateEvent() {
                       key={cat.id}
                       style={[
                         styles.categoryCard,
-                        isSelected && styles.categoryCardSelected,
+                        isSelected && {
+                          backgroundColor: colorStr,
+                          borderColor: colorStr,
+                          shadowColor: colorStr,
+                          shadowOpacity: 0.4,
+                          elevation: 6,
+                        },
                       ]}
-                      onPress={() => setCategory(cat.id)}
+                      onPress={() => setCategory(isSelected ? "" : cat.id)}
+                      activeOpacity={0.75}
                     >
+                      {/* Checkmark badge top-right when selected */}
+                      {isSelected && (
+                        <View style={styles.cardCheckBadge}>
+                          <Ionicons
+                            name="checkmark"
+                            size={11}
+                            color="#fff"
+                          />
+                        </View>
+                      )}
+
                       <View
                         style={[
-                          styles.categoryIconWrapper,
+                          styles.cardIconBubble,
                           {
                             backgroundColor: isSelected
-                              ? colorStr
+                              ? "rgba(255,255,255,0.25)"
                               : `${colorStr}20`,
                           },
                         ]}
                       >
-                        {/* ↓ SvgUri renders the real icon from API; Ionicons as fallback */}
                         {cat.icon?.url ? (
                           <SvgUri
                             uri={cat.icon.url}
-                            width={21}
-                            height={21}
+                            width={22}
+                            height={22}
                             color={isSelected ? "#fff" : colorStr}
                           />
                         ) : (
                           <Ionicons
                             name="grid-outline"
                             size={20}
-                            color={isSelected ? "#fff" : "#9CA3AF"}
+                            color={isSelected ? "#fff" : colorStr}
                           />
                         )}
                       </View>
+
                       <Text
                         style={[
-                          styles.categoryLabel,
-                          isSelected && styles.categoryLabelSelected,
+                          styles.cardLabel,
+                          isSelected
+                            ? styles.cardLabelSelected
+                            : { color: URBAN_COLORS.textPrimary },
                         ]}
+                        numberOfLines={1}
                       >
                         {cat.label}
                       </Text>
@@ -411,16 +481,134 @@ export default function CreateEvent() {
               />
             </View>
 
-            {/* Location */}
+            {/* ─────────────────────────────────────────────────────────
+                LOCATION — search with live autocomplete + map tap
+            ───────────────────────────────────────────────────────── */}
             <View style={styles.field}>
               <View style={styles.fieldHeader}>
                 <View style={styles.iconWrapperRequired}>
                   <Ionicons name="location-sharp" size={20} color="#fff" />
                 </View>
-                <Text style={styles.fieldTitleRequired}>Where?</Text>
+                <View style={styles.fieldHeaderText}>
+                  <Text style={styles.fieldTitleRequired}>Where?</Text>
+                  <Text style={styles.fieldSubtitleMuted}>
+                    Search or tap the map
+                  </Text>
+                </View>
               </View>
 
+              {/* Autocomplete search */}
+              <View style={styles.searchContainer}>
+                <View
+                  style={[
+                    styles.searchInputWrapper,
+                    showSuggestions &&
+                      suggestions.length > 0 &&
+                      styles.searchInputWrapperOpen,
+                  ]}
+                >
+                  <View style={styles.searchIconLeft}>
+                    {searchingLocation ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={URBAN_COLORS.primary}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="search-outline"
+                        size={18}
+                        color={
+                          locationSearch.length > 0
+                            ? URBAN_COLORS.primary
+                            : "#9CA3AF"
+                        }
+                      />
+                    )}
+                  </View>
+                  <TextInput
+                    style={styles.searchInput}
+                    value={locationSearch}
+                    onChangeText={handleLocationSearchChange}
+                    placeholder="Search address or place name..."
+                    placeholderTextColor="#9CA3AF"
+                    returnKeyType="search"
+                    onFocus={() => {
+                      if (suggestions.length > 0) setShowSuggestions(true);
+                    }}
+                    onBlur={() => {
+                      // small delay so tap on a suggestion registers
+                      setTimeout(() => setShowSuggestions(false), 150);
+                    }}
+                  />
+                  {locationSearch.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setLocationSearch("");
+                        setLocationSearchError("");
+                        setSuggestions([]);
+                        setShowSuggestions(false);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.searchClearBtn}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={18}
+                        color="#9CA3AF"
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Suggestions dropdown */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <View style={styles.suggestionsDropdown}>
+                    {suggestions.map((item, index) => (
+                      <TouchableOpacity
+                        key={`${item.lat}-${item.lon}`}
+                        style={[
+                          styles.suggestionItem,
+                          index < suggestions.length - 1 &&
+                            styles.suggestionItemBorder,
+                        ]}
+                        onPress={() => handleSuggestionSelect(item)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.suggestionIconWrap}>
+                          <Ionicons
+                            name="location-outline"
+                            size={16}
+                            color={URBAN_COLORS.primary}
+                          />
+                        </View>
+                        <Text
+                          style={styles.suggestionText}
+                          numberOfLines={2}
+                        >
+                          {shortenSuggestion(item.display_name)}
+                        </Text>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={14}
+                          color="#D1D5DB"
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {locationSearchError ? (
+                <View style={styles.searchErrorBadge}>
+                  <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                  <Text style={styles.searchErrorText}>
+                    {locationSearchError}
+                  </Text>
+                </View>
+              ) : null}
+
               <MapView
+                ref={mapRef}
                 style={styles.map}
                 initialRegion={{
                   latitude: 56.9496,
@@ -434,7 +622,9 @@ export default function CreateEvent() {
                   <Marker
                     coordinate={location}
                     draggable
-                    onDragEnd={(e) => handleMapPress(e.nativeEvent.coordinate)}
+                    onDragEnd={(e) =>
+                      handleMapPress(e.nativeEvent.coordinate)
+                    }
                     title={locationName || "Event Location"}
                   />
                 )}
@@ -454,8 +644,26 @@ export default function CreateEvent() {
 
               {locationName && !fetchingLocationName && (
                 <View style={styles.locationNameContainer}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#10B981"
+                  />
                   <Text style={styles.locationNameText}>{locationName}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setLocation(null);
+                      setLocationName("");
+                      setLocationSearch("");
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons
+                      name="close-circle"
+                      size={18}
+                      color="#6B7280"
+                    />
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -626,7 +834,8 @@ export default function CreateEvent() {
                       ]}
                       onPress={applyCustomParticipants}
                       disabled={
-                        !customParticipants || isNaN(Number(customParticipants))
+                        !customParticipants ||
+                        isNaN(Number(customParticipants))
                       }
                     >
                       <Text style={styles.applyButtonText}>Set</Text>
@@ -874,6 +1083,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+  fieldHeaderText: {
+    flex: 1,
+    gap: 2,
+  },
+  fieldSubtitleGreen: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#10B981",
+  },
+  fieldSubtitleMuted: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#9CA3AF",
+  },
   iconWrapperRequired: {
     width: 36,
     height: 36,
@@ -921,46 +1144,200 @@ const styles = StyleSheet.create({
     color: URBAN_COLORS.textPrimary,
     fontWeight: "800",
   },
+
+  // ─── CATEGORY GRID ───────────────────────────────────────────────
+  // 3-column wrapping grid; all interests visible, no scrolling needed
   categoryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
   },
   categoryCard: {
-    flexDirection: "row",
+    // ~3 columns accounting for 2×10 gaps
+    width: "31%",
+    flexGrow: 1,
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 14,
     backgroundColor: "#F9FAFB",
     borderWidth: 2,
-    borderColor: "transparent",
-  },
-  categoryCardSelected: {
-    backgroundColor: "#FFF",
-    borderColor: URBAN_COLORS.primary,
-    shadowColor: URBAN_COLORS.primary,
+    borderColor: "#F3F4F6",
+    gap: 8,
+    position: "relative",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 6,
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  categoryIconWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+  cardCheckBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "rgba(255,255,255,0.35)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 8,
   },
-  categoryLabel: {
-    fontSize: 14,
+  cardIconBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardLabel: {
+    fontSize: 13,
     fontWeight: "700",
-    color: "#9CA3AF",
+    textAlign: "center",
   },
-  categoryLabelSelected: {
+  cardLabelSelected: {
+    color: "#fff",
+  },
+
+  // ─── LOCATION SEARCH ─────────────────────────────────────────────
+  searchContainer: {
+    marginBottom: 12,
+    zIndex: 10,
+  },
+  searchInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  // Square off bottom corners while dropdown is open
+  searchInputWrapperOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomColor: "#F3F4F6",
+  },
+  searchIconLeft: {
+    width: 20,
+    alignItems: "center",
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
     color: URBAN_COLORS.textPrimary,
+    paddingVertical: 14,
   },
+  searchClearBtn: {
+    padding: 2,
+  },
+  suggestionsDropdown: {
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderTopWidth: 0,
+    borderColor: "#E5E7EB",
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  suggestionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  suggestionIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: `${URBAN_COLORS.primary}15`,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+    color: URBAN_COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  searchErrorBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1.5,
+    borderColor: "#FECACA",
+    gap: 8,
+  },
+  searchErrorText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#EF4444",
+    flex: 1,
+  },
+
+  // ─── MAP ─────────────────────────────────────────────────────────
+  map: {
+    width: "100%",
+    height: 220,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  locationLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#F59E0B",
+    gap: 8,
+  },
+  locationLoadingText: {
+    fontSize: 13,
+    color: "#D97706",
+    fontWeight: "700",
+  },
+  locationNameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#A7F3D0",
+    gap: 8,
+  },
+  locationNameText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#059669",
+    fontWeight: "800",
+  },
+
+  // ─── PARTICIPANTS ─────────────────────────────────────────────────
   participantPresetsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1060,6 +1437,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#059669",
   },
+
+  // ─── IMAGE ────────────────────────────────────────────────────────
   imageUploadButton: {
     height: 200,
     backgroundColor: "#F9FAFB",
@@ -1116,46 +1495,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  map: {
-    width: "100%",
-    height: 220,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  locationLoadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "#FEF3C7",
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: "#F59E0B",
-    gap: 8,
-  },
-  locationLoadingText: {
-    fontSize: 13,
-    color: "#D97706",
-    fontWeight: "700",
-  },
-  locationNameContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#A7F3D0",
-    gap: 8,
-  },
-  locationNameText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#059669",
-    fontWeight: "800",
-  },
+
+  // ─── SUBMIT ───────────────────────────────────────────────────────
   submit: {
     flexDirection: "row",
     padding: 20,

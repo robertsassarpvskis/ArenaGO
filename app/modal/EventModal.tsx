@@ -40,7 +40,7 @@ import {
   SCREEN_HEIGHT,
   sharedS,
 } from "./EventModalBase";
-import UserListModal from "./UserListModal";
+import UserListModal, { UserListParticipant } from "./UserListModal";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -134,8 +134,71 @@ export default function EventModal({
   const [showParticipants, setShowParticipants] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState<string | null>(null);
 
+  // ─── Full participants state ──────────────────────────────────────────────
+  const [fullParticipants, setFullParticipants] = useState<UserListParticipant[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsFetched, setParticipantsFetched] = useState(false);
+
   const isParticipant = viewMode === "participant";
   const isBasic = viewMode === "basic";
+
+  // Reset fetched flag when event changes so we re-fetch for the new event
+  useEffect(() => {
+    setParticipantsFetched(false);
+    setFullParticipants([]);
+  }, [event?.id]);
+
+  // Fetch full participants list from API when the user opens the attendees sheet
+  const fetchParticipants = useCallback(async () => {
+    if (!event?.id || participantsFetched) return;
+
+    setParticipantsLoading(true);
+    try {
+      const res = await fetch(`/api/Events/${event.id}/participants`, {
+        headers: {
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+
+      // Normalise — the API may return an array directly or wrap it
+      const raw: any[] = Array.isArray(data) ? data : (data.participants ?? data.items ?? []);
+
+      const mapped: UserListParticipant[] = raw.map((p: any) => ({
+        username: p.username ?? p.userName ?? "",
+        displayName: p.displayName ?? p.display_name ?? p.username ?? "",
+        profilePhoto: p.profilePhoto ?? p.profile_photo ?? null,
+        bio: p.bio ?? null,
+      }));
+
+      setFullParticipants(mapped);
+      setParticipantsFetched(true);
+    } catch (err) {
+      console.warn("[EventModal] Failed to fetch participants:", err);
+      // Fall back to preview data already embedded in the event
+      const preview = (event?.participantsPreview ?? []).map((p: any) => ({
+        username: p.username ?? "",
+        displayName: p.displayName ?? p.username ?? "",
+        profilePhoto: p.profilePhoto ?? null,
+        bio: p.bio ?? null,
+      }));
+      setFullParticipants(preview);
+      setParticipantsFetched(true);
+    } finally {
+      setParticipantsLoading(false);
+    }
+  }, [event?.id, accessToken, participantsFetched]);
+
+  const handleOpenParticipants = useCallback(() => {
+    if ((event?.participantsPreview?.length ?? 0) > 0 || (event?.attendees ?? 0) > 0) {
+      setShowParticipants(true);
+      fetchParticipants();
+    }
+  }, [event, fetchParticipants]);
 
   // Open / close animation
   useEffect(() => {
@@ -257,6 +320,17 @@ export default function EventModal({
   const timeFormat = event ? formatEventTime(eventTime) : "";
 
   const sheetBorderColor = isParticipant ? C.joined : C.accent;
+
+  // Determine which participants to show: full list if fetched, else preview
+  const displayParticipants: UserListParticipant[] =
+    participantsFetched
+      ? fullParticipants
+      : (event?.participantsPreview ?? []).map((p: any) => ({
+          username: p.username ?? "",
+          displayName: p.displayName ?? p.username ?? "",
+          profilePhoto: p.profilePhoto ?? null,
+          bio: p.bio ?? null,
+        }));
 
   return (
     <>
@@ -446,6 +520,24 @@ export default function EventModal({
                 </View>
 
                 <Divider />
+                <View style={ES.statsBar}>
+                  <View style={ES.statItem}>
+                    <Text style={ES.statValue}>{event!.attendees}</Text>
+                    <Text style={ES.statLabel}>GOING</Text>
+                  </View>
+                  <View style={ES.statDivider} />
+                  <View style={ES.statItem}>
+                    <Text style={ES.statValue}>
+                      {event!.maxParticipants ?? "10"}
+                    </Text>
+                    <Text style={ES.statLabel}>CAPACITY</Text>
+                  </View>
+                  <View style={ES.statDivider} />
+                  <View style={ES.statItem}>
+                    <Text style={ES.statValue}>SOON</Text>
+                    <Text style={ES.statLabel}>STATUS</Text>
+                  </View>
+                </View>
 
                 {/* WHERE */}
                 <View style={sharedS.block}>
@@ -529,10 +621,7 @@ export default function EventModal({
                 {/* ATTENDING */}
                 <Pressable
                   style={ES.attendeeBlock}
-                  onPress={() => {
-                    if ((event!.participantsPreview?.length ?? 0) > 0)
-                      setShowParticipants(true);
-                  }}
+                  onPress={handleOpenParticipants}
                 >
                   <View style={{ flex: 1 }}>
                     <EyebrowLabel>ATTENDING</EyebrowLabel>
@@ -551,7 +640,7 @@ export default function EventModal({
                               participant={p}
                               size={46}
                               borderColor={C.bg}
-                              onPress={() => setShowParticipants(true)}
+                              onPress={handleOpenParticipants}
                             />
                           </View>
                         ))}
@@ -595,28 +684,6 @@ export default function EventModal({
                       )}
                     </View>
                   </View>
-                  {/* {(event!.participantsPreview?.length ?? 0) > 0 && (
-                    <View
-                      style={[
-                        ES.seeAllChip,
-                        isParticipant && { backgroundColor: JOINED_BG },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          ES.seeAllText,
-                          isParticipant && { color: C.joined },
-                        ]}
-                      >
-                        SEE ALL
-                      </Text>
-                      <Ionicons
-                        name="arrow-forward"
-                        size={12}
-                        color={isParticipant ? C.joined : C.accent}
-                      />
-                    </View>
-                  )} */}
                 </Pressable>
 
                 <Divider />
@@ -685,8 +752,9 @@ export default function EventModal({
       {/* Participant list */}
       <UserListModal
         visible={showParticipants}
-        participants={event?.participantsPreview ?? []}
+        participants={displayParticipants}
         total={event?.attendees ?? 0}
+        isLoading={participantsLoading}
         onClose={() => setShowParticipants(false)}
         accentColor={isParticipant ? C.joined : C.accent}
         accentBg={isParticipant ? JOINED_BG : ACCENT_BG}
@@ -707,6 +775,29 @@ export default function EventModal({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const ES = StyleSheet.create({
+  // Stats bar
+  statsBar: {
+    flexDirection: "row",
+    paddingVertical: 18,
+    paddingHorizontal: H_PAD,
+    gap: 0,
+  },
+  statItem: { flex: 1, alignItems: "center" },
+  statValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: C.ink,
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: C.muted,
+    letterSpacing: 1.2,
+    marginTop: 3,
+  },
+  statDivider: { width: 1, backgroundColor: C.divider, marginVertical: 4 },
+
   chromeMiniJoinedBadge: {
     flexDirection: "row",
     alignItems: "center",

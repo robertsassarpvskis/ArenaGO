@@ -12,11 +12,14 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.r0bertasd.arenago",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "We use your location to show events near you."
       }
     },
     "android": {
       "package": "com.r0bertasd.arenago",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

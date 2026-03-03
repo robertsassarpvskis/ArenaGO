@@ -41,12 +41,12 @@ export const C = {
   joinedLight: "#10B981",
 } as const;
 
-export const ACCENT_BG   = "rgba(255,107,88,0.12)";
-export const GREEN_BG    = "rgba(16,185,129,0.12)";
-export const AMBER_BG    = "rgba(245,158,11,0.12)";
-export const JOINED_BG   = "rgba(5,150,105,0.12)";
-export const RED_BG      = "rgba(239,68,68,0.12)";
-export const BLUE_BG     = "rgba(59,130,246,0.12)";
+export const ACCENT_BG = "rgba(255,107,88,0.12)";
+export const GREEN_BG = "rgba(16,185,129,0.12)";
+export const AMBER_BG = "rgba(245,158,11,0.12)";
+export const JOINED_BG = "rgba(5,150,105,0.12)";
+export const RED_BG = "rgba(239,68,68,0.12)";
+export const BLUE_BG = "rgba(59,130,246,0.12)";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -291,7 +291,7 @@ export const sharedS = StyleSheet.create({
   },
   pillText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5 },
 
-  block: { paddingHorizontal: H_PAD, paddingVertical: 20 },
+  block: { paddingHorizontal: H_PAD, paddingTop: 20, paddingBottom: 6 },
 
   eyebrow: {
     fontSize: 13,
@@ -350,10 +350,10 @@ export const sharedS = StyleSheet.create({
     color: C.ink,
     letterSpacing: -0.4,
     marginTop: 2,
-    marginBottom: 10,
+    marginBottom: 16,
   },
   edgeMap: {
-    height: 260,
+    height: 300,
     marginHorizontal: -H_PAD,
     position: "relative",
     marginBottom: 12,

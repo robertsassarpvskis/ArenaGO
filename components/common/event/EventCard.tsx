@@ -1,3 +1,4 @@
+import { useLocation } from "@/hooks/useLocation";
 import { formatEventTime, getTimeLabel } from "@/scripts/timeUtils";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import CategoryBadge from "./CategoryBadge";
 import { UrbanBookmark } from "./UrbanBookmark";
+
 const { height, width } = Dimensions.get("window");
 const IMAGE_CARD_HEIGHT = Math.round(height * 0.45);
 const STICKER_CARD_HEIGHT = Math.round(height * 0.4);
@@ -186,6 +188,7 @@ export default function EventCard({
   location,
   isSaved = false,
 }: EventCardProps) {
+  const { location: userLocation } = useLocation();
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const [imageError, setImageError] = useState(false);

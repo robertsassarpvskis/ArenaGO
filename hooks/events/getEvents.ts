@@ -47,7 +47,7 @@ const API_BASE_URL = "http://217.182.74.113:30080";
 
 export async function getRecommendedEvents(
   token: string,
-  numEvents = 5,
+  numEvents = 50,
 ): Promise<Event[]> {
   const res = await fetch(
     `${API_BASE_URL}/api/Events/recommended?NumEvents=${numEvents}`,

@@ -8,6 +8,7 @@ import {
   getUserParticipatedEvents,
   Participation,
 } from "@/hooks/events/useParticipatedEvents";
+import { useLocation } from "@/hooks/useLocation";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import React, { useEffect, useState } from "react";
@@ -123,6 +124,12 @@ const buildEventShape = (event: ApiEvent) => ({
 
 export default function EventScreen() {
   const { user } = useAuth();
+  const {
+    location,
+    loading: locationLoading,
+    errorMsg: locationError,
+  } = useLocation();
+
   const { joinEvent } = useJoinEvent(user?.accessToken || null);
   const { startEvent, isStarting } = useStartEvent(user?.accessToken || null);
   const { cancelEvent, isCancelling } = useCancelEvent(
@@ -246,7 +253,7 @@ export default function EventScreen() {
       const [createdEvents, recommended, participations, likedEvents] =
         await Promise.all([
           getUserCreatedEvents(user?.userName || "", user?.accessToken || ""),
-          getRecommendedEvents(user?.accessToken || "", 10),
+          getRecommendedEvents(user?.accessToken || "", 20),
           getUserParticipatedEvents(
             user?.userName || "",
             user?.accessToken || "",

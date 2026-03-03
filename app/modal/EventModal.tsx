@@ -1,12 +1,24 @@
 // ─── EventModal.tsx ───────────────────────────────────────────────────────────
 // Event modal for basic (not joined) and participant (already joined) view modes.
 // Author view is handled by AuthorEventModal.tsx.
+// Distance from user location to event is computed inside this component.
+//
+// Map + "Open in Maps" button are delegated to <EventLocationMap />.
 
 import JoinEventButton from "@/components/common/buttons/JoinEventButton";
+import EventLocationMap from "@/components/common/event/EventLocationMap";
+import { useLocation } from "@/hooks/useLocation";
+import { formatDistance, getDistanceKm } from "@/scripts/distance";
 import { formatEventTime, getTimeLabel } from "@/scripts/timeUtils";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +32,6 @@ import {
   Text,
   View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
 import UserProfileModal from "../modal/UserProfileModal";
 import {
   ACCENT_BG,
@@ -31,11 +42,9 @@ import {
   DISMISS_THRESHOLD,
   Divider,
   EyebrowLabel,
-  GREEN_BG,
   H_PAD,
   JOINED_BG,
   MODAL_HEIGHT,
-  openMaps,
   Pill,
   SCREEN_HEIGHT,
   sharedS,
@@ -134,21 +143,45 @@ export default function EventModal({
   const [showParticipants, setShowParticipants] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState<string | null>(null);
 
+  // ─── User location ────────────────────────────────────────────────────────
+  const { location: userLocation } = useLocation();
+
+  // ─── Compute distance to this event ──────────────────────────────────────
+  const eventDistance = useMemo(() => {
+    if (!userLocation || !event) return null;
+
+    const coords =
+      event.location && typeof event.location === "object"
+        ? (event.location as { latitude: number; longitude: number })
+        : null;
+
+    if (!coords) return null;
+
+    const km = getDistanceKm(
+      userLocation.latitude,
+      userLocation.longitude,
+      coords.latitude,
+      coords.longitude,
+    );
+
+    return formatDistance(km); // e.g. "250 m", "1.4 km", "23 km"
+  }, [userLocation, event?.id, event?.location]);
+
   // ─── Full participants state ──────────────────────────────────────────────
-  const [fullParticipants, setFullParticipants] = useState<UserListParticipant[]>([]);
+  const [fullParticipants, setFullParticipants] = useState<
+    UserListParticipant[]
+  >([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsFetched, setParticipantsFetched] = useState(false);
 
   const isParticipant = viewMode === "participant";
   const isBasic = viewMode === "basic";
 
-  // Reset fetched flag when event changes so we re-fetch for the new event
   useEffect(() => {
     setParticipantsFetched(false);
     setFullParticipants([]);
   }, [event?.id]);
 
-  // Fetch full participants list from API when the user opens the attendees sheet
   const fetchParticipants = useCallback(async () => {
     if (!event?.id || participantsFetched) return;
 
@@ -165,8 +198,9 @@ export default function EventModal({
 
       const data = await res.json();
 
-      // Normalise — the API may return an array directly or wrap it
-      const raw: any[] = Array.isArray(data) ? data : (data.participants ?? data.items ?? []);
+      const raw: any[] = Array.isArray(data)
+        ? data
+        : (data.participants ?? data.items ?? []);
 
       const mapped: UserListParticipant[] = raw.map((p: any) => ({
         username: p.username ?? p.userName ?? "",
@@ -179,7 +213,6 @@ export default function EventModal({
       setParticipantsFetched(true);
     } catch (err) {
       console.warn("[EventModal] Failed to fetch participants:", err);
-      // Fall back to preview data already embedded in the event
       const preview = (event?.participantsPreview ?? []).map((p: any) => ({
         username: p.username ?? "",
         displayName: p.displayName ?? p.username ?? "",
@@ -194,13 +227,16 @@ export default function EventModal({
   }, [event?.id, accessToken, participantsFetched]);
 
   const handleOpenParticipants = useCallback(() => {
-    if ((event?.participantsPreview?.length ?? 0) > 0 || (event?.attendees ?? 0) > 0) {
+    if (
+      (event?.participantsPreview?.length ?? 0) > 0 ||
+      (event?.attendees ?? 0) > 0
+    ) {
       setShowParticipants(true);
       fetchParticipants();
     }
   }, [event, fetchParticipants]);
 
-  // Open / close animation
+  // ─── Open / close animation ───────────────────────────────────────────────
   useEffect(() => {
     if (visible) {
       dragY.setValue(0);
@@ -233,17 +269,19 @@ export default function EventModal({
     }
   }, [visible]);
 
-  // Drag-to-dismiss
+  // ─── Drag-to-dismiss ──────────────────────────────────────────────────────
   const onTouchStart = useCallback((e: any) => {
     isDragging.current = true;
     startY.current = e.nativeEvent.pageY;
     dragY.setValue(0);
   }, []);
+
   const onTouchMove = useCallback((e: any) => {
     if (!isDragging.current) return;
     const dy = e.nativeEvent.pageY - startY.current;
     if (dy > 0) dragY.setValue(dy);
   }, []);
+
   const onTouchEnd = useCallback(
     (e: any) => {
       if (!isDragging.current) return;
@@ -282,10 +320,9 @@ export default function EventModal({
   const handleSelectUser = (username: string) => setSelectedUsername(username);
   const handleCloseProfile = () => setSelectedUsername(null);
 
-  // Don't render if there's nothing to show and we're not loading
   if (!event && !isLoading) return null;
 
-  // Interpolations
+  // ─── Interpolations ───────────────────────────────────────────────────────
   const dragProgress = dragY.interpolate({
     inputRange: [0, DISMISS_THRESHOLD],
     outputRange: [0, 1],
@@ -305,12 +342,12 @@ export default function EventModal({
       ? event.image
       : event.image?.url
     : undefined;
+
   const coords =
     event && typeof event.location === "object"
       ? (event.location as { latitude: number; longitude: number })
       : null;
 
-  // Safe time computation — event may still be null while isLoading=true
   const eventTime = event
     ? typeof event.time === "string"
       ? Math.floor(Date.parse(event.time) / 1000)
@@ -321,16 +358,18 @@ export default function EventModal({
 
   const sheetBorderColor = isParticipant ? C.joined : C.accent;
 
-  // Determine which participants to show: full list if fetched, else preview
-  const displayParticipants: UserListParticipant[] =
-    participantsFetched
-      ? fullParticipants
-      : (event?.participantsPreview ?? []).map((p: any) => ({
-          username: p.username ?? "",
-          displayName: p.displayName ?? p.username ?? "",
-          profilePhoto: p.profilePhoto ?? null,
-          bio: p.bio ?? null,
-        }));
+  const displayParticipants: UserListParticipant[] = participantsFetched
+    ? fullParticipants
+    : (event?.participantsPreview ?? []).map((p: any) => ({
+        username: p.username ?? "",
+        displayName: p.displayName ?? p.username ?? "",
+        profilePhoto: p.profilePhoto ?? null,
+        bio: p.bio ?? null,
+      }));
+
+  const mapGradient: [string, string] = isParticipant
+    ? [C.joined, C.joinedLight]
+    : [C.accent, C.accentLight];
 
   return (
     <>
@@ -452,7 +491,7 @@ export default function EventModal({
                         }
                         color="#FFF"
                       />
-                      {!!event!.distance && (
+                      {!!eventDistance && (
                         <View
                           style={[
                             sharedS.pill,
@@ -462,8 +501,14 @@ export default function EventModal({
                             },
                           ]}
                         >
+                          <Ionicons
+                            name="navigate"
+                            size={13}
+                            color="#FFF"
+                            style={{ marginRight: 4 }}
+                          />
                           <Text style={[sharedS.pillText, { color: "#FFF" }]}>
-                            {event!.distance} AWAY
+                            {eventDistance} AWAY
                           </Text>
                         </View>
                       )}
@@ -520,6 +565,8 @@ export default function EventModal({
                 </View>
 
                 <Divider />
+
+                {/* Stats bar */}
                 <View style={ES.statsBar}>
                   <View style={ES.statItem}>
                     <Text style={ES.statValue}>{event!.attendees}</Text>
@@ -534,8 +581,15 @@ export default function EventModal({
                   </View>
                   <View style={ES.statDivider} />
                   <View style={ES.statItem}>
-                    <Text style={ES.statValue}>SOON</Text>
-                    <Text style={ES.statLabel}>STATUS</Text>
+                    <Text
+                      style={[
+                        ES.statValue,
+                        !!eventDistance && { color: C.green },
+                      ]}
+                    >
+                      {eventDistance ?? "—"}
+                    </Text>
+                    <Text style={ES.statLabel}>DISTANCE</Text>
                   </View>
                 </View>
 
@@ -548,73 +602,20 @@ export default function EventModal({
                         ? event!.location
                         : "")}
                   </Text>
-                  {!!event!.distance && (
-                    <View style={{ marginBottom: 14 }}>
-                      <View
-                        style={[
-                          sharedS.distanceBadge,
-                          { backgroundColor: GREEN_BG },
-                        ]}
-                      >
-                        <Ionicons
-                          name="navigate-outline"
-                          size={12}
-                          color={C.green}
-                        />
-                        <Text style={sharedS.distanceText}>
-                          {event!.distance} away
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                  {coords && (
-                    <View style={sharedS.edgeMap}>
-                      <MapView
-                        style={StyleSheet.absoluteFill}
-                        initialRegion={{
-                          ...coords,
-                          latitudeDelta: 0.012,
-                          longitudeDelta: 0.012,
-                        }}
-                        scrollEnabled={false}
-                        zoomEnabled={false}
-                        rotateEnabled={false}
-                        pitchEnabled={false}
-                      >
-                        <Marker
-                          coordinate={coords}
-                          title={event!.locationName ?? event!.title}
-                        />
-                      </MapView>
-                    </View>
-                  )}
-                  {coords && (
-                    <Pressable
-                      style={sharedS.mapsLinkBtn}
-                      onPress={() =>
-                        openMaps(
-                          coords.latitude,
-                          coords.longitude,
-                          event!.locationName ?? event!.title,
-                        )
-                      }
-                    >
-                      <LinearGradient
-                        colors={
-                          isParticipant
-                            ? [C.joined, C.joinedLight]
-                            : [C.accent, C.accentLight]
-                        }
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={sharedS.mapsLinkGrad}
-                      >
-                        <Ionicons name="navigate" size={14} color="#FFF" />
-                        <Text style={sharedS.mapsLinkText}>OPEN IN MAPS</Text>
-                      </LinearGradient>
-                    </Pressable>
-                  )}
                 </View>
+
+                {/*
+                  EventLocationMap receives:
+                  - coords      → event pin (end)
+                  - userCoords  → user pin (start) + triggers route line + auto-fit region
+                  - gradientColors → themed button matching view mode
+                */}
+                <EventLocationMap
+                  coords={coords}
+                  userCoords={userLocation}
+                  locationName={event!.locationName ?? event!.title}
+                  gradientColors={mapGradient}
+                />
 
                 <Divider />
 
@@ -775,7 +776,6 @@ export default function EventModal({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const ES = StyleSheet.create({
-  // Stats bar
   statsBar: {
     flexDirection: "row",
     paddingVertical: 18,
@@ -814,7 +814,6 @@ const ES = StyleSheet.create({
     letterSpacing: 0.8,
   },
 
-  // Participant bar
   joinedStatusPill: {
     flex: 1,
     flexDirection: "row",
@@ -855,7 +854,6 @@ const ES = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
-  // Attendees
   attendeeBlock: {
     flexDirection: "row",
     alignItems: "center",
@@ -917,7 +915,6 @@ const ES = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
-  // Host card
   hostCard: {
     flexDirection: "row",
     alignItems: "center",

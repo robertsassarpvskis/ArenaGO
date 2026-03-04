@@ -1,5 +1,7 @@
 // screens/UserProfileScreen.tsx
 import { FollowButton } from "@/components/common/buttons/FollowButton";
+import FollowStats from "@/components/common/profile/FollowStats"; // ← adjust to your path
+import { useAuth } from "@/hooks/context/AuthContext";
 import { LinearGradient } from "expo-linear-gradient";
 import { ArrowLeft, Calendar, Globe, MapPin, Users } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
@@ -14,22 +16,7 @@ import {
   View,
 } from "react-native";
 
-interface Interest {
-  id: number;
-  name: string;
-  icon: string;
-  rotation: number;
-}
-
-interface ParticipatedEvent {
-  id: number;
-  name: string;
-  category: string;
-  date: string;
-  time: string;
-  participants: number;
-  offset: number;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UserProfileData {
   userName: string;
@@ -45,48 +32,87 @@ interface UserProfileData {
 interface UserProfileScreenProps {
   username: string;
   onBack: () => void;
+  /** Navigate to another user's profile when tapping a follower/following row */
+  onNavigateToUser?: (username: string) => void;
 }
+
+// ─── Mock data (replace with API later) ──────────────────────────────────────
+
+const mockInterests = [
+  { id: 1, name: "Basketball", icon: "🏀", rotation: -3 },
+  { id: 2, name: "Yoga", icon: "🧘", rotation: 2 },
+  { id: 3, name: "Running", icon: "🏃", rotation: -2 },
+  { id: 4, name: "Tennis", icon: "🎾", rotation: 3 },
+  { id: 5, name: "Cycling", icon: "🚴", rotation: -1 },
+  { id: 6, name: "Swimming", icon: "🏊", rotation: 2 },
+];
+
+const mockRecentEvents = [
+  {
+    id: 1,
+    name: "Morning Basketball at Mežaparks",
+    category: "🏀",
+    date: "Jan 18",
+    time: "09:00",
+    participants: 12,
+    offset: 0,
+  },
+  {
+    id: 2,
+    name: "Sunset Yoga Session",
+    category: "🧘",
+    date: "Jan 15",
+    time: "18:30",
+    participants: 8,
+    offset: 20,
+  },
+  {
+    id: 3,
+    name: "5K Run Challenge",
+    category: "🏃",
+    date: "Jan 12",
+    time: "07:00",
+    participants: 24,
+    offset: -10,
+  },
+];
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function UserProfileScreen({
   username,
   onBack,
+  onNavigateToUser,
 }: UserProfileScreenProps) {
+  const { user } = useAuth();
+
   const [profile, setProfile] = useState<UserProfileData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (username) {
-      fetchUserProfile();
-    }
+    if (username) fetchUserProfile();
   }, [username]);
 
   const fetchUserProfile = async () => {
     try {
       setRefreshing(true);
       setError(null);
-
       const response = await fetch(
         `http://217.182.74.113:30080/api/Users/${username}`,
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch user profile");
-      }
-
+      if (!response.ok) throw new Error("Failed to fetch user profile");
       const data = await response.json();
       setProfile(data);
     } catch (err: any) {
-      console.error("Profile fetch error:", err);
-      // Safely extract error message
-      const errorMessage =
+      const msg =
         typeof err === "string"
           ? err
           : err?.message
             ? String(err.message)
             : "An error occurred";
-      setError(errorMessage);
+      setError(msg);
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -97,79 +123,43 @@ export default function UserProfileScreen({
     setProfile((prev) => (prev ? { ...prev, followerCount: newCount } : null));
   }, []);
 
+  // Keep followerCount in sync when FollowStats opens (e.g. someone followed
+  // from within the sheet). Not strictly necessary but keeps the badge fresh.
+  const handleFollowersCountUpdate = useCallback((delta: number) => {
+    setProfile((prev) =>
+      prev ? { ...prev, followerCount: prev.followerCount + delta } : null,
+    );
+  }, []);
+
   const calculateAge = (birthDate?: string) => {
     if (!birthDate) return null;
-
     const today = new Date();
     const birth = new Date(birthDate);
-
     let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birth.getDate())
-    ) {
-      age--;
-    }
-
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     return age;
   };
 
-  // Mock data for interests and events (you can fetch this from API later)
-  const mockData = {
-    interests: [
-      { id: 1, name: "Basketball", icon: "🏀", rotation: -3 },
-      { id: 2, name: "Yoga", icon: "🧘", rotation: 2 },
-      { id: 3, name: "Running", icon: "🏃", rotation: -2 },
-      { id: 4, name: "Tennis", icon: "🎾", rotation: 3 },
-      { id: 5, name: "Cycling", icon: "🚴", rotation: -1 },
-      { id: 6, name: "Swimming", icon: "🏊", rotation: 2 },
-    ],
-    recentEvents: [
-      {
-        id: 1,
-        name: "Morning Basketball at Mežaparks",
-        category: "🏀",
-        date: "Jan 18",
-        time: "09:00",
-        participants: 12,
-        offset: 0,
-      },
-      {
-        id: 2,
-        name: "Sunset Yoga Session",
-        category: "🧘",
-        date: "Jan 15",
-        time: "18:30",
-        participants: 8,
-        offset: 20,
-      },
-      {
-        id: 3,
-        name: "5K Run Challenge",
-        category: "🏃",
-        date: "Jan 12",
-        time: "07:00",
-        participants: 24,
-        offset: -10,
-      },
-    ],
-  };
+  // When a user is tapped inside the follower/following sheet, navigate to them.
+  const handleSelectUser = useCallback(
+    (selectedUsername: string) => {
+      onNavigateToUser?.(selectedUsername);
+    },
+    [onNavigateToUser],
+  );
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <Modal
-      style={styles.container}
-      animationType="none"
-      presentationStyle="fullScreen"
-    >
-      {/* Textured Background */}
+    <Modal animationType="none" presentationStyle="fullScreen">
+      {/* Background */}
       <LinearGradient
         colors={["#FAF6EE", "#F5EFE0", "#FAF6EE"]}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Back Button */}
+      {/* Back button */}
       <TouchableOpacity
         style={styles.backButton}
         onPress={onBack}
@@ -178,6 +168,7 @@ export default function UserProfileScreen({
         <ArrowLeft size={24} color="#1A1A1A" strokeWidth={2.5} />
       </TouchableOpacity>
 
+      {/* ── States ── */}
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#FF6B58" />
@@ -201,15 +192,14 @@ export default function UserProfileScreen({
             <RefreshControl
               refreshing={refreshing}
               onRefresh={fetchUserProfile}
-              tintColor="#FF6B58" // iOS
-              colors={["#FF6B58"]} // Android
+              tintColor="#FF6B58"
+              colors={["#FF6B58"]}
             />
           }
         >
-          {/* User Identity - Street Style */}
+          {/* ── Identity ── */}
           <View style={styles.identitySection}>
             <View style={styles.avatarRow}>
-              {/* Avatar */}
               <LinearGradient
                 colors={["#FF6B58", "#FF8A73", "#FFB088"]}
                 style={styles.avatar}
@@ -220,18 +210,16 @@ export default function UserProfileScreen({
                 </Text>
               </LinearGradient>
 
-              {/* Username & Name */}
               <View style={styles.nameColumn}>
                 <Text style={styles.username}>@{profile.userName}</Text>
                 <Text style={styles.fullName}>
                   {profile.firstName} {profile.lastName}
                 </Text>
-                {calculateAge(profile.birthDate) && (
+                {calculateAge(profile.birthDate) !== null && (
                   <Text style={styles.ageText}>
                     {calculateAge(profile.birthDate)} years old
                   </Text>
                 )}
-                {/* Meta Info */}
                 <View style={styles.metaInfo}>
                   <View style={styles.metaRow}>
                     <MapPin size={16} color="#FF6B58" strokeWidth={2.5} />
@@ -243,14 +231,14 @@ export default function UserProfileScreen({
               </View>
             </View>
           </View>
-          {/* Action Buttons */}
+
+          {/* ── Action buttons ── */}
           <View style={styles.actionButtons}>
             <FollowButton
               username={profile.userName}
               initialFollowerCount={profile.followerCount}
               onFollowerCountChange={handleFollowerCountChange}
             />
-
             <TouchableOpacity
               style={styles.secondaryButton}
               activeOpacity={0.8}
@@ -259,41 +247,28 @@ export default function UserProfileScreen({
               <Text style={styles.secondaryButtonText}>MESSAGE</Text>
             </TouchableOpacity>
           </View>
-          {/* Stats - Urban Style */}
-          <View style={styles.statsSection}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>
-                {profile.participatedEventsCount}
-              </Text>
-              <Text style={styles.statLabel}>EVENTS</Text>
-              <View style={styles.statAccent} />
-            </View>
 
-            <View style={[styles.statCard, { marginTop: 30 }]}>
-              <Text style={styles.statNumber}>{profile.followerCount}</Text>
-              <Text style={styles.statLabel}>Followers</Text>
-              <View style={styles.statAccent} />
-            </View>
+          {/* ── Stats (EVENTS static · FOLLOWERS & FOLLOWING pressable) ── */}
+          <FollowStats
+            username={profile.userName}
+            token={user?.accessToken ?? ""}
+            eventsCount={profile.participatedEventsCount}
+            followersCount={profile.followerCount}
+            followingCount={profile.followingCount}
+            onSelectUser={handleSelectUser}
+          />
 
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{profile.followingCount}</Text>
-              <Text style={styles.statLabel}>Following</Text>
-              <View style={styles.statAccent} />
-            </View>
-          </View>
-
-          {/* Interests - Street Cards with Overflow */}
+          {/* ── Interests ── */}
           <View style={styles.interestsSection}>
             <Text style={styles.sectionTitle}>INTERESTS</Text>
             <View style={styles.sectionTitleAccent} />
-
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.interestsScroll}
               style={styles.interestsContainer}
             >
-              {mockData.interests.map((interest, index) => (
+              {mockInterests.map((interest, index) => (
                 <View
                   key={interest.id}
                   style={[
@@ -327,49 +302,40 @@ export default function UserProfileScreen({
             </ScrollView>
           </View>
 
-          {/* Recent Activity - Masonry Style */}
+          {/* ── Recent Activity ── */}
           <View style={styles.eventsSection}>
             <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
             <View style={styles.sectionTitleAccent} />
-
             <View style={styles.eventsContainer}>
-              {mockData.recentEvents.map((event, index) => (
+              {mockRecentEvents.map((event, index) => (
                 <View
                   key={event.id}
                   style={[
                     styles.eventCard,
                     {
                       marginLeft: event.offset,
-                      zIndex: mockData.recentEvents.length - index,
+                      zIndex: mockRecentEvents.length - index,
                     },
                   ]}
                 >
                   <View style={styles.eventCardInner}>
-                    {/* Event Icon */}
                     <View style={styles.eventIconContainer}>
                       <Text style={styles.eventIcon}>{event.category}</Text>
                     </View>
-
-                    {/* Event Info */}
                     <View style={styles.eventInfo}>
                       <Text style={styles.eventName} numberOfLines={2}>
                         {event.name}
                       </Text>
-
                       <View style={styles.eventMeta}>
                         <View style={styles.eventMetaItem}>
                           <Calendar size={12} color="#666" strokeWidth={2} />
                           <Text style={styles.eventMetaText}>{event.date}</Text>
                         </View>
-
                         <View style={styles.eventMetaDivider} />
-
                         <View style={styles.eventMetaItem}>
                           <Text style={styles.eventTime}>{event.time}</Text>
                         </View>
-
                         <View style={styles.eventMetaDivider} />
-
                         <View style={styles.eventMetaItem}>
                           <Users size={12} color="#666" strokeWidth={2} />
                           <Text style={styles.eventMetaText}>
@@ -379,8 +345,6 @@ export default function UserProfileScreen({
                       </View>
                     </View>
                   </View>
-
-                  {/* Street-style accent line */}
                   <View style={styles.eventAccent} />
                 </View>
               ))}
@@ -392,11 +356,9 @@ export default function UserProfileScreen({
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAF6EE",
-  },
   backButton: {
     position: "absolute",
     top: 50,
@@ -450,6 +412,9 @@ const styles = StyleSheet.create({
     paddingTop: 100,
     paddingBottom: 100,
   },
+  identitySection: {
+    marginBottom: 16,
+  },
   avatarRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -459,9 +424,6 @@ const styles = StyleSheet.create({
   nameColumn: {
     flex: 1,
     justifyContent: "center",
-  },
-  identitySection: {
-    marginBottom: 16,
   },
   avatar: {
     width: 130,
@@ -523,37 +485,34 @@ const styles = StyleSheet.create({
     color: "#666666",
     fontWeight: "600",
   },
-  statsSection: {
+  actionButtons: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 50,
-    paddingHorizontal: 8,
+    gap: 12,
+    marginBottom: 20,
   },
-  statCard: {
+  secondaryButton: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    position: "relative",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2.5,
+    borderColor: "#FF6B58",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  statNumber: {
-    fontSize: 52,
+  secondaryButtonText: {
+    color: "#FF6B58",
+    fontSize: 14,
     fontWeight: "900",
-    color: "#666666",
-    letterSpacing: -2,
-    textShadowColor: "rgba(255,107,88,0.2)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
-  },
-  statLabel: {
-    fontSize: 9,
-    fontWeight: "900",
-    color: "#999999",
-    marginTop: 4,
-  },
-  statAccent: {
-    width: 30,
-    height: 4,
-    backgroundColor: "#FF6B58",
-    marginTop: 8,
-    borderRadius: 2,
+    letterSpacing: 1,
   },
   interestsSection: {
     marginBottom: 50,
@@ -696,58 +655,5 @@ const styles = StyleSheet.create({
   eventAccent: {
     height: 5,
     backgroundColor: "#FF6B58",
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 20,
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#FF6B58",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  primaryButtonGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-  },
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-  secondaryButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 2.5,
-    borderColor: "#FF6B58",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  secondaryButtonText: {
-    color: "#FF6B58",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1,
   },
 });

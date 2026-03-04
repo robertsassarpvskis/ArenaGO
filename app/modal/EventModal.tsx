@@ -758,7 +758,7 @@ export default function EventModal({
         isLoading={participantsLoading}
         onClose={() => setShowParticipants(false)}
         accentColor={isParticipant ? C.joined : C.accent}
-        accentBg={isParticipant ? JOINED_BG : ACCENT_BG}
+        // accentBg={isParticipant ? JOINED_BG : ACCENT_BG}
         onSelectUser={handleSelectUser}
       />
 

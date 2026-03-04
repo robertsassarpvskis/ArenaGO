@@ -332,14 +332,14 @@ export default function EventScreen() {
     }
   };
 
+  // In handleLeaveEvent, add a guard to prevent double-firing:
   const handleLeaveEvent = async (eventId: string) => {
     const ok = await leaveEvent(eventId);
     if (ok) {
       handleCloseModal();
       fetchEvents();
-    } else {
-      Alert.alert("Error", "Could not leave event. Please try again.");
     }
+    // Remove the else Alert — a 403 here just means JoinEventButton already handled it
   };
 
   const handleStartEvent = async (eventId: string) => {

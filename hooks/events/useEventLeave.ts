@@ -7,7 +7,7 @@ export function useLeaveEvent(token: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
-  const leaveEvent = async (eventId: string): Promise<void> => {
+  const leaveEvent = async (eventId: string): Promise<boolean> => {
     if (!token) throw new Error("User not authenticated yet");
 
     try {
@@ -22,14 +22,16 @@ export function useLeaveEvent(token: string | null) {
       });
 
       console.log("Successfully left event:", eventId);
+      return true;  // ← add this
     } catch (err: any) {
       console.error("Axios leave event error:", err.response?.data || err);
       setError(err.response?.data ?? err.message);
-      throw err;
+      return false;  // ← return false instead of throwing
     } finally {
       setLoading(false);
     }
   };
 
-  return { leaveEvent, loading, error };
+return { leaveEvent, loading, error };
+
 }

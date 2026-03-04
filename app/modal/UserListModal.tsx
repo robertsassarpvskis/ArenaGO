@@ -1,11 +1,12 @@
+// components/UserListModal.tsx
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Dimensions,
   Image,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -13,27 +14,23 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
-// ─── Tokens (mirrors EventModal exactly) ─────────────────────────────────────
-
-const { height } = Dimensions.get("window");
-const H_PAD = 22;
+const { width, height } = Dimensions.get("window");
 
 const C = {
   accent: "#FF6B58",
-  green: "#10B981",
   ink: "#0F172A",
   mid: "#64748B",
   muted: "#94A3B8",
   divider: "#E2E8F0",
-  bg: "#F8F7F2",
-  overlay: "rgba(15,23,42,0.65)",
-  joined: "#059669",
+  bg: "#FFFFFF",
+  overlay: "rgba(15,23,42,0.55)",
 } as const;
 
-const ACCENT_BG = "rgba(255,107,88,0.12)";
+const H_PAD = 20;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,22 +46,16 @@ export interface UserListModalProps {
   onClose: () => void;
   participants: UserListParticipant[];
   total: number;
-  /** Show a loading skeleton while participants are being fetched */
   isLoading?: boolean;
   title?: string;
   subtitle?: string;
   accentColor?: string;
-  accentBg?: string;
-  /**
-   * Called after the sheet closes. Parent is responsible for opening
-   * UserProfileModal with this username.
-   */
   onSelectUser: (username: string) => void;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Avatar helpers ───────────────────────────────────────────────────────────
 
-const AVATAR_PALETTES: Array<[string, string]> = [
+const PALETTES: Array<[string, string]> = [
   ["#FF6B58", "#FF8A73"],
   ["#10B981", "#34D399"],
   ["#3B82F6", "#60A5FA"],
@@ -73,13 +64,12 @@ const AVATAR_PALETTES: Array<[string, string]> = [
   ["#EF4444", "#F87171"],
 ];
 
-const avatarGradient = (seed: string): [string, string] =>
-  AVATAR_PALETTES[
-    seed.split("").reduce((a, c) => a + c.charCodeAt(0), 0) %
-      AVATAR_PALETTES.length
+const palette = (seed: string): [string, string] =>
+  PALETTES[
+    seed.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTES.length
   ];
 
-const ini = (name: string) => {
+const initials = (name: string) => {
   const p = name.trim().split(" ");
   return p.length >= 2
     ? (p[0][0] + p[p.length - 1][0]).toUpperCase()
@@ -88,27 +78,22 @@ const ini = (name: string) => {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function Avatar({
-  participant,
-  size = 52,
-}: {
-  participant: UserListParticipant;
-  size?: number;
-}) {
-  const [g1, g2] = avatarGradient(participant.username);
+function Avatar({ participant }: { participant: UserListParticipant }) {
+  const SIZE = 44;
+  const [g1, g2] = palette(participant.username);
   return (
     <View
       style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
+        width: SIZE,
+        height: SIZE,
+        borderRadius: SIZE * 0.28,
         overflow: "hidden",
-        backgroundColor: C.bg,
+        flexShrink: 0,
         shadowColor: g1,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.35,
-        shadowRadius: 6,
-        elevation: 4,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.28,
+        shadowRadius: 4,
+        elevation: 3,
       }}
     >
       {participant.profilePhoto?.url ? (
@@ -125,10 +110,8 @@ function Avatar({
             { justifyContent: "center", alignItems: "center" },
           ]}
         >
-          <Text
-            style={{ color: "#FFF", fontSize: size * 0.3, fontWeight: "900" }}
-          >
-            {ini(participant.displayName)}
+          <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "900" }}>
+            {initials(participant.displayName)}
           </Text>
         </LinearGradient>
       )}
@@ -136,46 +119,64 @@ function Avatar({
   );
 }
 
-// ─── Thin divider ─────────────────────────────────────────────────────────────
-
-const Divider = () => (
-  <View
-    style={{
-      height: StyleSheet.hairlineWidth * 2,
-      backgroundColor: C.divider,
-      marginHorizontal: H_PAD,
-    }}
-  />
-);
-
-// ─── Loading skeleton rows ────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
   const pulse = useRef(new Animated.Value(0.4)).current;
-
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 650, useNativeDriver: true }),
       ])
     ).start();
   }, []);
 
   return (
     <Animated.View style={[S.row, { opacity: pulse }]}>
-      {/* Avatar placeholder */}
-      <View style={[S.skeletonAvatar, { backgroundColor: C.divider }]} />
-      {/* Text placeholders */}
-      <View style={{ flex: 1, gap: 8 }}>
-        <View style={[S.skeletonLine, { width: "55%", backgroundColor: C.divider }]} />
-        <View style={[S.skeletonLine, { width: "35%", backgroundColor: C.divider }]} />
+      <View style={[S.skelAvatar, { backgroundColor: C.divider }]} />
+      <View style={S.skelTextBlock}>
+        <View style={[S.skelLine, { width: "46%", backgroundColor: C.divider }]} />
+        <View style={[S.skelLine, { width: "28%", backgroundColor: C.divider }]} />
       </View>
     </Animated.View>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── User Row ─────────────────────────────────────────────────────────────────
+
+interface UserRowProps {
+  participant: UserListParticipant;
+  accentColor: string;
+  onPress: () => void;
+}
+
+function UserRow({ participant, accentColor, onPress }: UserRowProps) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.65}
+      onPress={onPress}
+      style={S.row}
+    >
+      <Avatar participant={participant} />
+
+      <View style={S.textBlock}>
+        <Text style={S.displayName} numberOfLines={1}>
+          {participant.displayName}
+        </Text>
+        <Text style={S.username} numberOfLines={1}>
+          @{participant.username}
+        </Text>
+      </View>
+
+      <View style={[S.chip, { backgroundColor: accentColor + "15" }]}>
+        <Ionicons name="chevron-forward" size={13} color={accentColor} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function UserListModal({
   visible,
@@ -183,42 +184,41 @@ export default function UserListModal({
   participants,
   total,
   isLoading = false,
-  title = "WHO'S GOING",
-  subtitle,
+  title = "FOLLOWERS",
   accentColor = C.accent,
-  accentBg = ACCENT_BG,
   onSelectUser,
 }: UserListModalProps) {
-  const slideAnim = useRef(new Animated.Value(height)).current;
-  const backdropAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.93)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (visible) {
       setSearch("");
+      Keyboard.dismiss();
       Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-          friction: 10,
-          tension: 80,
-        }),
-        Animated.timing(backdropAnim, {
+        Animated.spring(scaleAnim, {
           toValue: 1,
-          duration: 200,
+          useNativeDriver: true,
+          friction: 9,
+          tension: 100,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: height,
-          duration: 220,
+        Animated.timing(scaleAnim, {
+          toValue: 0.93,
+          duration: 160,
           useNativeDriver: true,
         }),
-        Animated.timing(backdropAnim, {
+        Animated.timing(opacityAnim, {
           toValue: 0,
-          duration: 200,
+          duration: 160,
           useNativeDriver: true,
         }),
       ]).start();
@@ -230,13 +230,11 @@ export default function UserListModal({
       ? participants.filter(
           (p) =>
             p.displayName.toLowerCase().includes(search.toLowerCase()) ||
-            p.username.toLowerCase().includes(search.toLowerCase()),
+            p.username.toLowerCase().includes(search.toLowerCase())
         )
       : participants;
 
-  const handleRowPress = (username: string) => {
-    // Close the sheet, then notify parent after a short delay so
-    // the close animation has started before the parent re-renders.
+  const handlePress = (username: string) => {
     onClose();
     setTimeout(() => onSelectUser(username), 60);
   };
@@ -250,345 +248,315 @@ export default function UserListModal({
       statusBarTranslucent
     >
       {/* Backdrop */}
-      <Animated.View
-        style={[S.backdrop, { opacity: backdropAnim }]}
-        pointerEvents="box-none"
-      >
+      <Animated.View style={[S.backdrop, { opacity: opacityAnim }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
 
-      {/* Sheet */}
-      <Animated.View
-        style={[
-          S.sheet,
-          {
-            borderTopColor: accentColor,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        {/* Drag handle */}
-        <View style={S.handleRow}>
-          <View style={S.handle} />
-        </View>
+      {/* Centered card */}
+      <View style={S.centeredWrapper} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            S.card,
+            { borderTopColor: accentColor },
+            { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
+          ]}
+        >
+          {/* ── Header ── */}
+          <View style={S.header}>
+            <View style={S.titleBlock}>
+              <Text style={[S.title, { color: accentColor }]}>{title}</Text>
+              <View style={[S.titleUnderline, { backgroundColor: accentColor }]} />
+            </View>
 
-        {/* Header row */}
-        <View style={S.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={S.bigTitle}>{title}</Text>
-            <Text style={S.subtitle}>
-              {subtitle ??
-                `${total} ${total === 1 ? "person" : "people"} attending`}
-            </Text>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {/* Loading spinner OR count badge */}
-            {isLoading ? (
-              <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 4 }} />
-            ) : (
-              <View style={[S.countBadge, { backgroundColor: accentBg }]}>
-                <Text style={[S.countBadgeText, { color: accentColor }]}>
-                  {total}
+            <View style={S.headerRight}>
+              <View style={[S.countPill, { backgroundColor: accentColor + "15" }]}>
+                <Text style={[S.countText, { color: accentColor }]}>
+                  {isLoading ? "—" : total}
                 </Text>
               </View>
-            )}
-            {/* Close */}
-            <Pressable
-              style={S.closeBtn}
-              onPress={onClose}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close" size={18} color={C.ink} />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Heavy divider */}
-        <View style={S.heavyDivider} />
-
-        {/* Search — appears when > 4 participants or already fetched */}
-        {(!isLoading && participants.length > 4) && (
-          <View style={[S.searchWrap, { borderColor: accentColor + "50" }]}>
-            <Ionicons name="search-outline" size={15} color={C.muted} />
-            <TextInput
-              style={S.searchInput}
-              placeholder="Search attendees…"
-              placeholderTextColor={C.muted}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            {search.length > 0 && (
               <Pressable
-                onPress={() => setSearch("")}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={onClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={S.closeBtn}
               >
-                <Ionicons name="close-circle" size={16} color={C.muted} />
+                <Ionicons name="close" size={16} color={C.mid} />
               </Pressable>
-            )}
+            </View>
           </View>
-        )}
 
-        {/* Participant list */}
-        <ScrollView
-          style={{ flex: 1 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          bounces
-        >
-          {/* Loading state — show skeleton rows */}
-          {isLoading && (
-            <>
-              {[...Array(5)].map((_, i) => (
-                <React.Fragment key={`skel-${i}`}>
+          {/* Bold divider */}
+          <View style={S.boldDivider} />
+
+          {/* ── Search ── */}
+          {!isLoading && participants.length > 5 && (
+            <View style={S.searchWrap}>
+              <View style={[S.searchInner, { borderColor: accentColor + "35" }]}>
+                <Ionicons name="search-outline" size={14} color={C.muted} />
+                <TextInput
+                  style={S.searchInput}
+                  placeholder="Search…"
+                  placeholderTextColor={C.muted}
+                  value={search}
+                  onChangeText={setSearch}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+                {search.length > 0 && (
+                  <Pressable
+                    onPress={() => setSearch("")}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={15} color={C.muted} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ── List ── */}
+          <ScrollView
+            style={S.list}
+            contentContainerStyle={[S.listContent, { paddingHorizontal: H_PAD }]}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+          >
+            {/* Skeletons */}
+            {isLoading &&
+              [...Array(5)].map((_, i) => (
+                <React.Fragment key={`sk-${i}`}>
                   <SkeletonRow />
-                  {i < 4 && <Divider />}
+                  {i < 4 && <View style={S.rowDivider} />}
                 </React.Fragment>
               ))}
-            </>
-          )}
 
-          {/* Populated list */}
-          {!isLoading && filtered.length === 0 ? (
-            <View style={S.emptyState}>
-              <View style={[S.emptyIcon, { backgroundColor: accentBg }]}>
-                <Ionicons name="people-outline" size={28} color={accentColor} />
+            {/* Empty */}
+            {!isLoading && filtered.length === 0 && (
+              <View style={S.empty}>
+                <View style={[S.emptyIconWrap, { backgroundColor: accentColor + "12" }]}>
+                  <Ionicons name="people-outline" size={26} color={accentColor} />
+                </View>
+                <Text style={S.emptyTitle}>Nobody here yet</Text>
+                {search.length > 0 && (
+                  <Text style={S.emptyHint}>Try a different name</Text>
+                )}
               </View>
-              <Text style={S.emptyTitle}>No results</Text>
-              <Text style={S.emptySubtitle}>
-                Try a different name or username
-              </Text>
-            </View>
-          ) : (
-            !isLoading && filtered.map((p, i) => (
-              <React.Fragment key={p.username}>
-                <Pressable
-                  style={({ pressed }) => [
-                    S.row,
-                    pressed && { backgroundColor: "rgba(15,23,42,0.04)" },
-                  ]}
-                  onPress={() => handleRowPress(p.username)}
-                >
-                  {/* Avatar + online dot */}
-                  <View style={S.avatarWrap}>
-                    <Avatar participant={p} size={52} />
-                    <View style={[S.onlineDot, { borderColor: C.bg }]} />
-                  </View>
+            )}
 
-                  {/* Name / username / optional bio */}
-                  <View style={{ flex: 1 }}>
-                    <Text style={S.displayName} numberOfLines={1}>
-                      {p.displayName}
-                    </Text>
-                    <Text style={S.username} numberOfLines={1}>
-                      @{p.username}
-                    </Text>
-                    {!!p.bio && (
-                      <Text style={S.bio} numberOfLines={1}>
-                        {p.bio}
-                      </Text>
-                    )}
-                  </View>
+            {/* Rows */}
+            {!isLoading &&
+              filtered.map((p, i) => (
+                <React.Fragment key={p.username}>
+                  <UserRow
+                    participant={p}
+                    accentColor={accentColor}
+                    onPress={() => handlePress(p.username)}
+                  />
+                  {i < filtered.length - 1 && <View style={S.rowDivider} />}
+                </React.Fragment>
+              ))}
+          </ScrollView>
 
-                  {/* Arrow chip */}
-                  <View style={[S.arrowChip, { backgroundColor: accentBg }]}>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={13}
-                      color={accentColor}
-                    />
-                  </View>
-                </Pressable>
-
-                {i < filtered.length - 1 && <Divider />}
-              </React.Fragment>
-            ))
-          )}
-
-          <View style={{ height: Platform.OS === "ios" ? 56 : 36 }} />
-        </ScrollView>
-      </Animated.View>
+          <View style={{ height: Platform.OS === "ios" ? 10 : 6 }} />
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
+const CARD_WIDTH = width * 0.88;
+
 const S = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: C.overlay,
   },
-
-  sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  centeredWrapper: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  card: {
+    width: CARD_WIDTH,
+    maxHeight: height * 0.68,
     backgroundColor: C.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 22,
     borderTopWidth: 3,
-    maxHeight: height * 0.86,
-    overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 24,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.2,
+    shadowRadius: 32,
+    elevation: 22,
+    overflow: "hidden",
   },
 
-  handleRow: { paddingVertical: 10, alignItems: "center" },
-  handle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#CBD5E1",
-  },
-
+  // ── Header
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: H_PAD,
-    paddingBottom: 16,
-    gap: 12,
+    paddingTop: 18,
+    paddingBottom: 14,
   },
-  bigTitle: {
-    fontSize: 22,
+  titleBlock: {
+    gap: 5,
+  },
+  title: {
+    fontSize: 17,
     fontWeight: "900",
-    color: C.ink,
-    letterSpacing: -0.3,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
-  subtitle: {
+  titleUnderline: {
+    width: 28,
+    height: 3,
+    borderRadius: 2,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  countPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  countText: {
     fontSize: 13,
-    color: C.muted,
-    fontWeight: "600",
-    marginTop: 3,
+    fontWeight: "800",
   },
-  countBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  countBadgeText: { fontSize: 18, fontWeight: "900" },
   closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: C.divider,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
-
-  heavyDivider: {
+  boldDivider: {
     height: 2,
     backgroundColor: C.ink,
   },
 
+  // ── Search
   searchWrap: {
+    paddingHorizontal: H_PAD,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  searchInner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginHorizontal: H_PAD,
-    marginTop: 14,
-    marginBottom: 6,
-    backgroundColor: "#FFF",
-    borderRadius: 12,
+    gap: 8,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 11,
     borderWidth: 1.5,
-    paddingHorizontal: 13,
-    paddingVertical: Platform.OS === "ios" ? 12 : 9,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 9 : 7,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
     color: C.ink,
     padding: 0,
   },
 
+  // ── List
+  list: {
+    flexGrow: 0,
+  },
+  listContent: {
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+
+  // ── Row
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
-    paddingVertical: 13,
-    paddingHorizontal: H_PAD,
+    paddingVertical: 12,
   },
-  avatarWrap: { position: "relative" },
-  onlineDot: {
-    position: "absolute",
-    bottom: 1,
-    right: 1,
-    width: 13,
-    height: 13,
-    borderRadius: 7,
-    borderWidth: 2.5,
-    backgroundColor: C.green,
-  },
-  displayName: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: C.ink,
-    letterSpacing: -0.2,
-  },
-  username: {
-    fontSize: 13,
-    color: C.muted,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  bio: {
-    fontSize: 12,
-    color: C.mid,
-    fontWeight: "500",
-    marginTop: 3,
-  },
-  arrowChip: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
+  rowDivider: {
+    height: StyleSheet.hairlineWidth * 2,
+    backgroundColor: C.divider,
   },
 
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 52,
-    gap: 10,
+  // ── Text inside row
+  textBlock: {
+    flex: 1,
+    flexShrink: 1,
+    marginLeft: 12,
+    gap: 3,
   },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+  displayName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: C.ink,
+    letterSpacing: -0.1,
+  },
+  username: {
+    fontSize: 12,
+    color: C.muted,
+    fontWeight: "600",
+  },
+
+  // ── Arrow chip
+  chip: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginLeft: 10,
+  },
+
+  // ── Empty
+  empty: {
+    alignItems: "center",
+    paddingVertical: 36,
+    paddingHorizontal: H_PAD,
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
   },
   emptyTitle: {
-    fontSize: 17,
-    fontWeight: "900",
+    fontSize: 14,
+    fontWeight: "800",
     color: C.ink,
-    letterSpacing: -0.2,
   },
-  emptySubtitle: {
-    fontSize: 13,
-    color: C.muted,
+  emptyHint: {
+    fontSize: 12,
     fontWeight: "600",
+    color: C.muted,
   },
 
-  // Skeleton
-  skeletonAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 52 * 0.28,
+  // ── Skeleton
+  skelAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 44 * 0.28,
+    flexShrink: 0,
   },
-  skeletonLine: {
-    height: 12,
-    borderRadius: 6,
+  skelTextBlock: {
+    flex: 1,
+    flexShrink: 1,
+    marginLeft: 12,
+    gap: 7,
+  },
+  skelLine: {
+    height: 10,
+    borderRadius: 5,
   },
 });

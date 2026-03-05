@@ -397,7 +397,7 @@ export default function WelcomeScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-              <View style={styles.divider} />
+            <View style={styles.divider} />
 
             <TouchableOpacity
               style={styles.secondaryButton}
@@ -412,11 +412,18 @@ export default function WelcomeScreen() {
             </TouchableOpacity>
             <View style={styles.dividerContainer}>
               <View style={styles.divider} />
-    
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => router.push("/(auth)/ProfileSetUp")}
+                activeOpacity={0.7}
+              >
+                <View style={styles.secondaryButtonInner}>
+                  <Text style={styles.secondaryButtonText}>SetUP</Text>
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* Social Sign-In Buttons */}
-          
           </Animated.View>
 
           {/* Footer */}

@@ -15,6 +15,8 @@ interface AuthTokens {
 interface AuthContextType {
   user: AuthTokens | null;
   isLoading: boolean;
+  isNewSignup: boolean;
+  clearNewSignup: () => void;
   login: (data: LoginData) => Promise<void>;
   signup: (data: SignUpData) => Promise<void>;
   logout: () => Promise<void>;
@@ -27,9 +29,9 @@ interface SignUpData {
   lastName: string;
   email: string;
   password: string;
-  gender: boolean; // true = male? backend defined
-  birthDate: string; // ISO string
-  preferredLanguages: string[]; // changed from number[] to string[]
+  gender: boolean;
+  birthDate: string;
+  preferredLanguages: string[];
   preferredTimeZone: string;
 }
 
@@ -49,6 +51,10 @@ export function AuthProvider({
 }): React.ReactElement {
   const [user, setUser] = useState<AuthTokens | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // When true, the routing guard stands down so ProfileSetupScreen
+  // can handle navigation instead of being overridden by the auth useEffect.
+  const [isNewSignup, setIsNewSignup] = useState(false);
+
   const router = useRouter();
   const segments = useSegments();
 
@@ -64,38 +70,35 @@ export function AuthProvider({
     const inAuthGroup = segments[0] === "(auth)";
 
     if (!user && !inAuthGroup) {
-      // Redirect to login if not authenticated
+      // Not authenticated — send to login
       router.replace("/(auth)/LoginScreen");
     } else if (user && inAuthGroup) {
-      // Redirect to main app if authenticated
+      // Authenticated but still in auth screens —
+      // only redirect if this is NOT a fresh signup.
+      // Fresh signups are routed manually by SignUpScreen -> ProfileSetupScreen.
+      if (isNewSignup) return;
       router.replace("/(tabs)");
     }
-  }, [user, segments, isLoading]);
+  }, [user, segments, isLoading, isNewSignup]);
 
-  // Auto-refresh token before expiry
+  // Auto-refresh access token before it expires
   useEffect(() => {
     if (!user) return;
 
     const checkTokenExpiry = () => {
       const expiresAt = new Date(user.accessTokenExpiresAt).getTime();
-      const now = Date.now();
-      const timeUntilExpiry = expiresAt - now;
+      const timeUntilExpiry = expiresAt - Date.now();
 
-      console.log("[Auth] Time until expiry (ms):", timeUntilExpiry);
+      console.log("[Auth] Time until token expiry (ms):", timeUntilExpiry);
 
-      // If expired OR about to expire → refresh
       if (timeUntilExpiry <= 120000) {
-        console.log("[Auth] Token expired or about to expire. Refreshing...");
+        console.log("[Auth] Token expiring soon — refreshing...");
         refreshAccessToken();
       }
     };
 
-    // Check immediately
     checkTokenExpiry();
-
-    // Check every minute
     const interval = setInterval(checkTokenExpiry, 60000);
-
     return () => clearInterval(interval);
   }, [user]);
 
@@ -105,14 +108,12 @@ export function AuthProvider({
       if (stored) {
         const tokens: AuthTokens = JSON.parse(stored);
 
-        // Check if refresh token is still valid
         const refreshExpiresAt = new Date(
           tokens.refreshTokenExpiresAt,
         ).getTime();
         if (refreshExpiresAt > Date.now()) {
           setUser(tokens);
 
-          // Check if access token needs refresh
           const accessExpiresAt = new Date(
             tokens.accessTokenExpiresAt,
           ).getTime();
@@ -120,12 +121,12 @@ export function AuthProvider({
             await refreshAccessToken();
           }
         } else {
-          // Refresh token expired, clear storage
+          // Refresh token expired — force re-login
           await SecureStore.deleteItemAsync("authTokens");
         }
       }
     } catch (error) {
-      console.error("Error loading tokens:", error);
+      console.error("[Auth] Error loading stored tokens:", error);
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +137,7 @@ export function AuthProvider({
       await SecureStore.setItemAsync("authTokens", JSON.stringify(tokens));
       setUser(tokens);
     } catch (error) {
-      console.error("Error saving tokens:", error);
+      console.error("[Auth] Error saving tokens:", error);
       throw error;
     }
   };
@@ -160,7 +161,8 @@ export function AuthProvider({
       });
 
       const rawText = await response.text();
-      console.log("Login raw response:", rawText); // 🔥 log the server response
+      console.log("[Auth] Login response:", rawText);
+
       let res: any;
       try {
         res = JSON.parse(rawText);
@@ -170,22 +172,22 @@ export function AuthProvider({
 
       if (!response.ok) {
         if (res?.errors) {
-          const firstErrorGroup = Object.values(res.errors)[0];
-          if (Array.isArray(firstErrorGroup))
-            throw new Error(firstErrorGroup[0]);
+          const firstGroup = Object.values(res.errors)[0];
+          if (Array.isArray(firstGroup))
+            throw new Error(firstGroup[0] as string);
         }
         throw new Error(res?.detail || "Login failed");
       }
 
-      // ✅ Accept tokens in res.result or at root
       const tokens: AuthTokens = res.result ?? res;
-
       if (!tokens?.accessToken)
         throw new Error("Login response missing authentication data");
 
+      // Existing user login — no profile setup needed
+      setIsNewSignup(false);
       await saveTokens(tokens);
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("[Auth] Login error:", error);
       throw error;
     }
   };
@@ -202,48 +204,47 @@ export function AuthProvider({
       });
 
       const res = await response.json();
-
-      console.log("Signup raw response:", res); // 🔥 log the server response
+      console.log("[Auth] Signup response:", res);
 
       if (!response.ok) {
-        // Handle ASP.NET validation errors
         if (res?.errors) {
-          const firstErrorGroup = Object.values(res.errors)[0];
-          if (Array.isArray(firstErrorGroup)) {
-            throw new Error(firstErrorGroup[0]);
-          }
+          const firstGroup = Object.values(res.errors)[0];
+          if (Array.isArray(firstGroup))
+            throw new Error(firstGroup[0] as string);
         }
         throw new Error(res?.detail || "Sign up failed");
       }
 
-      // Determine where the tokens actually are
-      const tokens: AuthTokens = res.result ?? res; // fallback to root if no result
-
-      if (!tokens?.accessToken) {
+      const tokens: AuthTokens = res.result ?? res;
+      if (!tokens?.accessToken)
         throw new Error("Signup response missing authentication data");
-      }
 
+      // Set BEFORE saveTokens so the routing useEffect sees isNewSignup=true
+      // when user state updates, preventing the auto-redirect to /(tabs)
+      setIsNewSignup(true);
       await saveTokens(tokens);
     } catch (error) {
-      console.error("Signup error:", error);
+      console.error("[Auth] Signup error:", error);
       throw error;
     }
+  };
+
+  // Call this from ProfileSetupScreen once setup is done or skipped.
+  // Reactivates normal auth routing for all future navigations.
+  const clearNewSignup = () => {
+    setIsNewSignup(false);
   };
 
   const refreshAccessToken = async () => {
     if (!user) return;
 
-    console.log("[AuthContext] Refreshing access token...");
+    console.log("[Auth] Refreshing access token...");
 
     try {
       const response = await fetch(`${API_BASE_URL}/refresh`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          refreshToken: user.refreshToken,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: user.refreshToken }),
       });
 
       const data = await response.json();
@@ -253,20 +254,13 @@ export function AuthProvider({
         throw new Error("Session expired. Please login again.");
       }
 
-      // 🔥 LOG NEW ACCESS TOKEN HERE
       console.log(
-        "[AuthContext] Access token refreshed successfully:",
-        data.accessToken,
-      );
-
-      console.log(
-        "[AuthContext] New access token expires at:",
+        "[Auth] Token refreshed. New expiry:",
         data.accessTokenExpiresAt,
       );
-
       await saveTokens(data);
     } catch (error) {
-      console.error("Token refresh error:", error);
+      console.error("[Auth] Token refresh error:", error);
       await logout();
       throw error;
     }
@@ -275,9 +269,10 @@ export function AuthProvider({
   const logout = async () => {
     try {
       await SecureStore.deleteItemAsync("authTokens");
+      setIsNewSignup(false);
       setUser(null);
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("[Auth] Logout error:", error);
     }
   };
 
@@ -286,6 +281,8 @@ export function AuthProvider({
       value={{
         user,
         isLoading,
+        isNewSignup,
+        clearNewSignup,
         login,
         signup,
         logout,

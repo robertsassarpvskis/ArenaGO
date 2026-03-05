@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Avatar from "../../../components/common/profile/Avatar";
 import { useAuth } from "../../../hooks/context/AuthContext";
 import { useProfile } from "../../../hooks/profile/useProfile";
 
@@ -159,16 +160,12 @@ export default function ProfileScreen() {
         {/* User Identity - Street Style */}
         <View style={styles.identitySection}>
           <View style={styles.avatarRow}>
-            {/* Avatar */}
-            <LinearGradient
-              colors={["#FF6B58", "#FF8A73", "#FFB088"]}
-              style={styles.avatar}
-            >
-              <Text style={styles.avatarText}>
-                {profile?.firstName?.[0] ?? "A"}
-                {profile?.lastName?.[0] ?? "R"}
-              </Text>
-            </LinearGradient>
+            <Avatar
+              uri={profile?.profilePhoto?.url}
+              firstName={profile?.firstName}
+              lastName={profile?.lastName}
+              size={120}
+            />
 
             {/* Username & Name */}
             <View style={styles.nameColumn}>

@@ -332,6 +332,8 @@ export default function SignUpScreen() {
       console.log("Signup payload:", payload);
 
       await signup(payload);
+      router.replace("/(auth)/ProfileSetUp");
+
       // Navigation handled automatically by AuthContext
     } catch (error: any) {
       console.error("SignUp error:", error);

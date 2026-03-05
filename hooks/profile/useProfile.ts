@@ -7,6 +7,7 @@ export interface Profile {
   firstName: string;
   lastName: string;
   email: string;
+  bio?: string;
   profilePhoto?: {
     id: string;
     url: string;

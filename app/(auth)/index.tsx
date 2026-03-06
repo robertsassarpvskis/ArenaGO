@@ -410,18 +410,7 @@ export default function WelcomeScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
-            <View style={styles.dividerContainer}>
-              <View style={styles.divider} />
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => router.push("/(auth)/ProfileSetUp")}
-                activeOpacity={0.7}
-              >
-                <View style={styles.secondaryButtonInner}>
-                  <Text style={styles.secondaryButtonText}>SetUP</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.dividerContainer}></View>
 
             {/* Social Sign-In Buttons */}
           </Animated.View>

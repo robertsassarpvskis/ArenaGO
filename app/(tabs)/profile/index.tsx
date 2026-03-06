@@ -1,6 +1,6 @@
 // app/(tabs)/ProfileScreen.tsx
-import { LinearGradient } from "expo-linear-gradient";
-import { Calendar, Globe, LogOut, MapPin, Users } from "lucide-react-native";
+import FollowStats from "@/components/common/profile/FollowStats";
+import { Edit3, LogOut, Share2 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   Alert,
@@ -16,6 +16,8 @@ import Avatar from "../../../components/common/profile/Avatar";
 import { useAuth } from "../../../hooks/context/AuthContext";
 import { useProfile } from "../../../hooks/profile/useProfile";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface Interest {
   id: number;
   name: string;
@@ -23,20 +25,73 @@ interface Interest {
   rotation: number;
 }
 
-interface ParticipatedEvent {
+interface RecentEvent {
   id: number;
   name: string;
-  category: string;
+  icon: string;
   date: string;
   time: string;
   participants: number;
-  offset: number;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const INTERESTS: Interest[] = [
+  { id: 1, name: "Basketball", icon: "🏀", rotation: -1.5 },
+  { id: 2, name: "Yoga", icon: "🧘", rotation: 1 },
+  { id: 3, name: "Running", icon: "🏃", rotation: -2 },
+  { id: 4, name: "Tennis", icon: "🎾", rotation: 2 },
+  { id: 5, name: "Cycling", icon: "🚴", rotation: -1 },
+  { id: 6, name: "Swimming", icon: "🏊", rotation: 1.5 },
+];
+
+const RECENT_EVENTS: RecentEvent[] = [
+  {
+    id: 1,
+    name: "Morning Basketball at Mežaparks",
+    icon: "🏀",
+    date: "JAN 18",
+    time: "09:00",
+    participants: 12,
+  },
+  {
+    id: 2,
+    name: "Sunset Yoga Session",
+    icon: "🧘",
+    date: "JAN 15",
+    time: "18:30",
+    participants: 8,
+  },
+  {
+    id: 3,
+    name: "5K Run Challenge",
+    icon: "🏃",
+    date: "JAN 12",
+    time: "07:00",
+    participants: 24,
+  },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function calculateAge(birthDate?: string): number | null {
+  if (!birthDate) return null;
+  const today = new Date();
+  const birth = new Date(birthDate);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const { profile, loading, error, incrementFollowerCount, refetch } =
-    useProfile(user?.userName ?? "", user?.accessToken);
+  const { profile, refetch } = useProfile(
+    user?.userName ?? "",
+    user?.accessToken,
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -44,291 +99,154 @@ export default function ProfileScreen() {
     await refetch();
     setRefreshing(false);
   };
-  const calculateAge = (birthDate?: string) => {
-    if (!birthDate) return null;
-
-    const today = new Date();
-    const birth = new Date(birthDate);
-
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birth.getDate())
-    ) {
-      age--;
-    }
-
-    return age;
-  };
-
-  const profileData = {
-    firstName: "Alex",
-    lastName: "Rivers",
-    age: 20,
-    location: "Latvia · Riga", // vari nākotnē izmantot profile.lastKnownLocation
-    languages: "en",
-    eventsParticipated: 47,
-    followers: 234,
-    friends: 89,
-    socialCredit: 1200,
-    interests: [
-      { id: 1, name: "Basketball", icon: "🏀", rotation: -3 },
-      { id: 2, name: "Yoga", icon: "🧘", rotation: 2 },
-      { id: 3, name: "Running", icon: "🏃", rotation: -2 },
-      { id: 4, name: "Tennis", icon: "🎾", rotation: 3 },
-      { id: 5, name: "Cycling", icon: "🚴", rotation: -1 },
-      { id: 6, name: "Swimming", icon: "🏊", rotation: 2 },
-    ],
-    recentEvents: [
-      {
-        id: 1,
-        name: "Morning Basketball at Mežaparks",
-        category: "🏀",
-        date: "Jan 18",
-        time: "09:00",
-        participants: 12,
-        offset: 0,
-      },
-      {
-        id: 2,
-        name: "Sunset Yoga Session",
-        category: "🧘",
-        date: "Jan 15",
-        time: "18:30",
-        participants: 8,
-        offset: 20,
-      },
-      {
-        id: 3,
-        name: "5K Run Challenge",
-        category: "🏃",
-        date: "Jan 12",
-        time: "07:00",
-        participants: 24,
-        offset: -10,
-      },
-    ],
-  };
 
   const handleLogout = () => {
     Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
+      "Sign out",
+      "Are you sure?",
       [
+        { text: "Cancel", style: "cancel" },
         {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Logout",
+          text: "Sign out",
           style: "destructive",
-          onPress: async () => {
-            await logout();
-          },
+          onPress: async () => await logout(),
         },
       ],
       { cancelable: true },
     );
   };
 
+  const age = calculateAge(profile?.birthDate);
+  const firstName = profile?.firstName ?? "Alex";
+  const lastName = profile?.lastName ?? "Rivers";
+  const username = user?.userName ?? "alex_rivers";
+
+  const metaParts: string[] = [];
+  if (age !== null) metaParts.push(`${age}y`);
+  metaParts.push("Riga, LV");
+  metaParts.push("EN · LV");
+
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Textured Background */}
-
-      <LinearGradient
-        colors={["#FAF6EE", "#F5EFE0", "#FAF6EE"]}
-        style={StyleSheet.absoluteFill}
-      />
-
+    <SafeAreaView style={styles.safe}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor="#FF6B58"
-            colors={["#FF6B58", "#FFB088", "#FF8A73"]}
-            progressBackgroundColor="#FFFFFF"
-            progressViewOffset={10}
-            size={50}
+            tintColor={C.accent}
+            colors={[C.accent]}
           />
         }
       >
-        {/* User Identity - Street Style */}
-        <View style={styles.identitySection}>
-          <View style={styles.avatarRow}>
+        {/* ── TOP BAR ── */}
+        <View style={styles.topBar}>
+          <Text style={styles.wallLabel}>MY WALL</Text>
+          <View style={styles.topActions}>
+            <TouchableOpacity style={styles.ghostBtn} activeOpacity={0.7}>
+              <Share2 size={16} color={C.sub} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.solidBtn} activeOpacity={0.8}>
+              <Edit3 size={13} color="#FFF" strokeWidth={2.5} />
+              <Text style={styles.solidBtnText}>EDIT</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── IDENTITY ── */}
+        <View style={styles.identity}>
+          {/* Square avatar with radius — clipped via overflow */}
+          <View style={styles.avatarWrap}>
             <Avatar
               uri={profile?.profilePhoto?.url}
-              firstName={profile?.firstName}
-              lastName={profile?.lastName}
-              size={120}
+              firstName={firstName}
+              lastName={lastName}
+              size={140}
             />
+          </View>
 
-            {/* Username & Name */}
-            <View style={styles.nameColumn}>
-              <Text style={styles.username}>
-                @{user?.userName || "alex_rivers"}
-              </Text>
-              <Text style={styles.fullName}>
-                {profile?.firstName && profile?.lastName
-                  ? `${profile.firstName} ${profile.lastName}`
-                  : "Alex Rivers"}
-              </Text>
-              <Text>{calculateAge(profile?.birthDate)}</Text>
-              {/* Meta Info */}
-              <View style={styles.metaInfo}>
-                <View style={styles.metaRow}>
-                  <MapPin size={16} color="#FF6B58" strokeWidth={2.5} />
-                  <Text style={styles.metaText}>{profileData.location}</Text>
+          <View style={styles.nameCol}>
+            <Text style={styles.username}>@{username}</Text>
+            <Text style={styles.realName}>
+              {firstName} {lastName}
+            </Text>
+            {/* Meta as small inline chips */}
+            <View style={styles.metaChips}>
+              {metaParts.map((part, i) => (
+                <View key={i} style={styles.metaChip}>
+                  <Text style={styles.metaChipText}>{part}</Text>
                 </View>
-                <View style={styles.metaRow}>
-                  <Globe size={16} color="#FF6B58" strokeWidth={2.5} />
-                  <Text style={styles.metaText}>on</Text>
-                </View>
-              </View>
+              ))}
             </View>
           </View>
         </View>
 
-        {/* Stats - Urban Style */}
-        <View style={styles.statsSection}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {profile?.participatedEventsCount}
-            </Text>
-            <Text style={styles.statLabel}>EVENTS</Text>
-            <View style={styles.statAccent} />
-          </View>
+        {/* ── STATS ── */}
+        <FollowStats
+          username={username}
+          token={user?.accessToken ?? ""}
+          eventsCount={profile?.participatedEventsCount}
+          followersCount={profile?.followerCount}
+          followingCount={profile?.followingCount}
+          onSelectUser={(_u) => {
+            // TODO: navigate to UserProfileScreen for _u
+          }}
+        />
 
-          <View style={[styles.statCard, { marginTop: 30 }]}>
-            <Text style={styles.statNumber}>{profile?.followerCount}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
-            <View style={styles.statAccent} />
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{profile?.followingCount}</Text>
-            <Text style={styles.statLabel}>Following</Text>
-            <View style={styles.statAccent} />
-          </View>
+        {/* ── INTERESTS ── */}
+        {/* Section title — street style: big bold + accent bar */}
+        <Text style={styles.sectionTitle}>INTERESTS</Text>
+        <View style={styles.sectionAccentBar} />
+        <View style={styles.interestGrid}>
+          {INTERESTS.map((item) => (
+            <View
+              key={item.id}
+              style={[
+                styles.interestCell,
+                { transform: [{ rotate: `${item.rotation}deg` }] },
+              ]}
+            >
+              <Text style={styles.interestEmoji}>{item.icon}</Text>
+              <Text style={styles.interestName}>{item.name.toUpperCase()}</Text>
+            </View>
+          ))}
         </View>
 
-        {/* Interests - Street Cards with Overflow */}
-        <View style={styles.interestsSection}>
-          <Text style={styles.sectionTitle}>INTERESTS</Text>
-          <View style={styles.sectionTitleAccent} />
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.interestsScroll}
-            style={styles.interestsContainer}
-          >
-            {profileData.interests.map((interest, index) => (
-              <View
-                key={interest.id}
-                style={[
-                  styles.interestCard,
-                  {
-                    transform: [{ rotate: `${interest.rotation}deg` }],
-                    marginLeft: index === 0 ? -10 : 0,
-                  },
-                ]}
-              >
-                <LinearGradient
-                  colors={
-                    index % 3 === 0
-                      ? ["#FF6B58", "#FF8A73"]
-                      : index % 3 === 1
-                        ? ["#FF8A73", "#FFB088"]
-                        : ["#FF6B58", "#FFB088"]
-                  }
-                  style={styles.interestGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Text style={styles.interestIcon}>{interest.icon}</Text>
-                  <Text style={styles.interestName}>
-                    {interest.name.toUpperCase()}
-                  </Text>
-                  <View style={styles.interestBrush} />
-                </LinearGradient>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Recent Activity - Masonry Style */}
-        <View style={styles.eventsSection}>
-          <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
-          <View style={styles.sectionTitleAccent} />
-
-          <View style={styles.eventsContainer}>
-            {profileData.recentEvents.map((event, index) => (
-              <View
-                key={event.id}
-                style={[
-                  styles.eventCard,
-                  {
-                    marginLeft: event.offset,
-                    zIndex: profileData.recentEvents.length - index,
-                  },
-                ]}
-              >
-                <View style={styles.eventCardInner}>
-                  {/* Event Icon */}
-                  <View style={styles.eventIconContainer}>
-                    <Text style={styles.eventIcon}>{event.category}</Text>
-                  </View>
-
-                  {/* Event Info */}
-                  <View style={styles.eventInfo}>
-                    <Text style={styles.eventName} numberOfLines={2}>
-                      {event.name}
-                    </Text>
-
-                    <View style={styles.eventMeta}>
-                      <View style={styles.eventMetaItem}>
-                        <Calendar size={12} color="#666" strokeWidth={2} />
-                        <Text style={styles.eventMetaText}>{event.date}</Text>
-                      </View>
-
-                      <View style={styles.eventMetaDivider} />
-
-                      <View style={styles.eventMetaItem}>
-                        <Text style={styles.eventTime}>{event.time}</Text>
-                      </View>
-
-                      <View style={styles.eventMetaDivider} />
-
-                      <View style={styles.eventMetaItem}>
-                        <Users size={12} color="#666" strokeWidth={2} />
-                        <Text style={styles.eventMetaText}>
-                          {event.participants}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+        {/* ── RECENT ACTIVITY ── */}
+        <Text style={styles.sectionTitle}>RECENT ACTIVITY</Text>
+        <View style={styles.sectionAccentBar} />
+        <View style={styles.eventList}>
+          {RECENT_EVENTS.map((ev) => (
+            <View key={ev.id} style={styles.eventCard}>
+              {/* Inner row */}
+              <View style={styles.eventCardInner}>
+                <View style={styles.eventIconBox}>
+                  <Text style={styles.eventEmoji}>{ev.icon}</Text>
                 </View>
-
-                {/* Street-style accent line */}
-                <View style={styles.eventAccent} />
+                <View style={styles.eventInfo}>
+                  <Text style={styles.eventName} numberOfLines={2}>
+                    {ev.name}
+                  </Text>
+                  <Text style={styles.eventMeta}>
+                    {ev.date} · {ev.time} · {ev.participants} people
+                  </Text>
+                </View>
               </View>
-            ))}
-          </View>
+              {/* Street accent strip at bottom — from Doc 8 */}
+              <View style={styles.eventAccentStrip} />
+            </View>
+          ))}
         </View>
 
-        {/* Logout */}
+        {/* ── SIGN OUT ── */}
         <TouchableOpacity
-          style={styles.logoutButton}
+          style={styles.signOutBtn}
           onPress={handleLogout}
-          activeOpacity={0.8}
+          activeOpacity={0.6}
         >
-          <LogOut size={18} color="#FF6B58" strokeWidth={2.5} />
-          <Text style={styles.logoutText}>SIGN OUT</Text>
+          <LogOut size={12} color={C.muted} strokeWidth={2} />
+          <Text style={styles.signOutText}>SIGN OUT</Text>
         </TouchableOpacity>
 
         <Text style={styles.version}>v1.0.0</Text>
@@ -337,386 +255,250 @@ export default function ProfileScreen() {
   );
 }
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const C = {
+  bg: "#F5F2EC", // warm wall
+  surface: "#EDEAE3", // card / chip surface
+  border: "#DDD9D1", // quiet borders
+  text: "#1A1A1A", // primary
+  sub: "#888888", // secondary
+  muted: "#BBBBBB", // very quiet
+  accent: "#FF6B58", // coral — single accent
+  intBg: "#FFF0EE", // interest cell bg
+  intBorder: "#FFCFC9", // interest cell border
+  intText: "#CC4433", // interest label
+};
+
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#FAF6EE",
+  safe: {
+    flex: 1,
+    backgroundColor: C.bg,
   },
-  scrollContent: {
-    padding: 24,
+  scroll: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
     paddingBottom: 100,
   },
-  avatarRow: {
+
+  // ── Top bar — minimal, utility only
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 18,
-    marginBottom: 20,
-  },
-  nameColumn: {
-    flex: 1,
-    justifyContent: "center",
-  },
-
-  // Identity Section - Street Style
-  identitySection: {
-    marginBottom: 16,
-  },
-  avatarContainer: {
-    position: "relative",
-    display: "flex",
-    flexDirection: "row",
-
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 28,
   },
-  nameSection: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  avatar: {
-    width: 130,
-    height: 130,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#FF6B58",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 12,
-    borderWidth: 4,
-    borderColor: "#FFFFFF",
-  },
-  avatarText: {
-    fontSize: 48,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: 4,
-    textShadowColor: "rgba(0,0,0,0.2)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-  },
-  arBadge: {
-    position: "absolute",
-    bottom: -8,
-    right: -8,
-  },
-  arBadgeGradient: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  arBadgeText: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: 1,
-  },
-  profileInfo: {
-    gap: 10,
-  },
-
-  username: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#1A1A1A",
-    letterSpacing: -1,
-    textTransform: "lowercase",
-    textShadowColor: "rgba(255,107,88,0.15)",
-    textShadowOffset: { width: 3, height: 3 },
-    textShadowRadius: 0,
-  },
-  usernameUnderline: {
-    position: "absolute",
-    bottom: 4,
-    left: 0,
-    right: 0,
-    height: 6,
-    backgroundColor: "#FF6B58",
-    opacity: 0.3,
-  },
-  fullName: {
-    fontSize: 18,
-    color: "#666666",
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  metaInfo: {
-    gap: 8,
-    marginTop: 8,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  metaText: {
-    fontSize: 14,
-    color: "#666666",
-    fontWeight: "600",
-  },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-  },
-  primaryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    shadowColor: "#FF6B58",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-  secondaryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 2.5,
-    borderColor: "#FF6B58",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  secondaryButtonText: {
-    color: "#FF6B58",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-
-  // Stats - Urban Cards
-  statsSection: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 50,
-    paddingHorizontal: 8,
-  },
-  statCard: {
-    alignItems: "center",
-    position: "relative",
-  },
-  statNumber: {
-    fontSize: 52,
-    fontWeight: "900",
-    color: "#FF6B58",
-    letterSpacing: -2,
-    textShadowColor: "rgba(255,107,88,0.2)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
-  },
-  statLabel: {
+  wallLabel: {
     fontSize: 9,
     fontWeight: "900",
-    color: "#999999",
-
-    marginTop: 4,
+    letterSpacing: 4,
+    color: C.muted,
   },
-  statAccent: {
-    width: 30,
-    height: 4,
-    backgroundColor: "#FF6B58",
-    marginTop: 8,
-    borderRadius: 2,
+  topActions: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
   },
-
-  // Interests - Street Cards
-  interestsSection: {
-    marginBottom: 50,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#1A1A1A",
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  sectionTitleAccent: {
-    width: 60,
-    height: 5,
-    backgroundColor: "#FF6B58",
-    marginBottom: 20,
-    borderRadius: 2,
-  },
-  interestsContainer: {
-    marginHorizontal: -24,
-  },
-  interestsScroll: {
-    paddingHorizontal: 24,
-    paddingRight: 50,
-    gap: 16,
-  },
-  interestCard: {},
-  interestGradient: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 16,
+  ghostBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.surface,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 120,
-    position: "relative",
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.4)",
   },
-  interestIcon: {
-    fontSize: 48,
-    marginBottom: 8,
+  solidBtn: {
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: C.accent,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  interestName: {
-    fontSize: 13,
+  solidBtnText: {
+    fontSize: 11,
     fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: 1,
-    textShadowColor: "rgba(0,0,0,0.2)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  interestBrush: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 20,
-    height: 3,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    borderRadius: 2,
-    transform: [{ rotate: "45deg" }],
+    color: "#FFF",
+    letterSpacing: 1.5,
   },
 
-  // Events - Masonry
-  eventsSection: {
-    marginBottom: 40,
-  },
-  eventsContainer: {
+  // ── Identity — bigger avatar, accent username
+  identity: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 20,
+    marginBottom: 36,
+  },
+  avatarWrap: {
+    width: 140,
+    height: 140,
+    borderRadius: 18,
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  nameCol: {
+    flex: 1,
+    gap: 4,
+  },
+  // Hero element — accent color, biggest text
+  username: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: C.accent,
+    letterSpacing: -1.5,
+    lineHeight: 32,
+  },
+  realName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: C.text,
+    letterSpacing: 0.3,
+  },
+  metaChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 5,
+    marginTop: 8,
+  },
+  metaChip: {
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+    backgroundColor: C.surface,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  metaChipText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: C.sub,
+    letterSpacing: 0.3,
+  },
+
+  // ── Section header — street style from Doc 8
+  // Big bold title + short accent bar underneath
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: C.text,
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  sectionAccentBar: {
+    width: 48,
+    height: 4,
+    backgroundColor: C.accent,
+    borderRadius: 2,
+    marginBottom: 18,
+  },
+
+  // ── Interests — 3-col grid, single coral tint, rotated sticker feel
+  interestGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 36,
+  },
+  interestCell: {
+    // 3 equal columns with gap accounted for
+    width: "30.5%",
+    backgroundColor: C.intBg,
+    borderWidth: 1.5,
+    borderColor: C.intBorder,
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 7,
+  },
+  interestEmoji: {
+    fontSize: 28,
+  },
+  interestName: {
+    fontSize: 9,
+    fontWeight: "900",
+    color: C.intText,
+    letterSpacing: 0.8,
+    textAlign: "center",
+  },
+
+  // ── Events — minimal card with street accent strip bottom
+  eventList: {
+    gap: 12,
+    marginBottom: 44,
   },
   eventCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
+    backgroundColor: C.surface,
+    borderRadius: 12,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: C.border,
   },
   eventCardInner: {
     flexDirection: "row",
-    padding: 18,
-    gap: 16,
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
   },
-  eventIconContainer: {
-    width: 56,
-    height: 56,
-    backgroundColor: "#FAF6EE",
-    borderRadius: 14,
+  eventIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: C.intBg,
+    borderWidth: 1.5,
+    borderColor: C.intBorder,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#FF6B58",
+    flexShrink: 0,
   },
-  eventIcon: {
-    fontSize: 32,
+  eventEmoji: {
+    fontSize: 24,
   },
   eventInfo: {
     flex: 1,
-    gap: 10,
+    gap: 4,
   },
   eventName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
-    color: "#1A1A1A",
-    lineHeight: 22,
+    color: C.text,
     letterSpacing: -0.3,
+    lineHeight: 19,
   },
   eventMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  eventMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  eventMetaText: {
-    fontSize: 12,
-    color: "#666666",
+    fontSize: 11,
     fontWeight: "600",
+    color: C.sub,
   },
-  eventTime: {
-    fontSize: 12,
-    color: "#666666",
-    fontWeight: "700",
-  },
-  eventMetaDivider: {
-    width: 3,
+  // Street accent strip — thin coral bar at base of each card (Doc 8)
+  eventAccentStrip: {
     height: 3,
-    backgroundColor: "#CCCCCC",
-    borderRadius: 2,
-  },
-  eventAccent: {
-    height: 5,
-    backgroundColor: "#FF6B58",
+    backgroundColor: C.accent,
   },
 
-  // Logout
-  logoutButton: {
+  // ── Sign out — whisper quiet
+  signOutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 2.5,
-    borderColor: "#FF6B58",
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    gap: 6,
+    marginBottom: 16,
   },
-  logoutText: {
-    color: "#FF6B58",
-    fontSize: 15,
+  signOutText: {
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 1,
+    color: C.muted,
+    letterSpacing: 3,
   },
+
+  // ── Version
   version: {
     textAlign: "center",
-    color: "#CCCCCC",
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 2,
+    color: C.muted,
+    letterSpacing: 3,
   },
 });

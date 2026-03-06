@@ -1,28 +1,12 @@
 // components/profile/FollowStats.tsx
-//
-// Pixel-identical to the statsSection in UserProfileScreen.tsx.
-// EVENTS card is static; FOLLOWERS and FOLLOWING cards are pressable
-// and open UserListModal with live API data.
-//
-// Props:
-//   username        — the profile being viewed (not necessarily the logged-in user)
-//   token           — JWT access token from useAuth()
-//   eventsCount     — participatedEventsCount from profile API
-//   followersCount  — followerCount from profile API
-//   followingCount  — followingCount from profile API
-//   onSelectUser    — called with a username when user taps a row in the sheet;
-//                     parent opens UserProfileScreen for that username
-
-import UserListModal, {
-    UserListParticipant,
-} from "@/app/modal/UserListModal"; // ← adjust to your path
+import UserListModal, { UserListParticipant } from "@/app/modal/UserListModal";
 import { useCallback, useRef, useState } from "react";
 import {
-    Animated,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,63 +62,53 @@ async function apiFetchFollowing(
   }));
 }
 
-// ─── Single stat card ─────────────────────────────────────────────────────────
+// ─── StatItem ─────────────────────────────────────────────────────────────────
 
-function StatCard({
-  value,
-  label,
-  offsetTop = 0,
-  onPress,
-}: {
+interface StatItemProps {
   value?: number;
   label: string;
-  offsetTop?: number;
   onPress?: () => void;
-}) {
+}
+
+function StatItem({ value, label, onPress }: StatItemProps) {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const onPressIn = () =>
+  const handlePressIn = () =>
     Animated.spring(scale, {
-      toValue: 0.88,
+      toValue: 0.92,
       useNativeDriver: true,
-      friction: 5,
-      tension: 120,
+      friction: 6,
+      tension: 140,
     }).start();
 
-  const onPressOut = () =>
+  const handlePressOut = () =>
     Animated.spring(scale, {
       toValue: 1,
       useNativeDriver: true,
-      friction: 5,
-      tension: 120,
+      friction: 6,
+      tension: 140,
     }).start();
 
-  const card = (
-    <Animated.View
-      style={[
-        styles.statCard,
-        { marginTop: offsetTop },
-        { transform: [{ scale }] },
-      ]}
-    >
-      <Text style={styles.statNumber}>{value ?? "—"}</Text>
+  const inner = (
+    <Animated.View style={[styles.statItem, { transform: [{ scale }] }]}>
+      <Text style={[styles.statNum, onPress && styles.statNumAccent]}>
+        {value ?? "—"}
+      </Text>
       <Text style={styles.statLabel}>{label}</Text>
-      <View style={styles.statAccent} />
-      {/* Subtle pulsing underline so tappable cards feel interactive */}
-      {!!onPress && <View style={styles.tapHint} />}
+      {onPress && <View style={styles.statUnderline} />}
     </Animated.View>
   );
 
-  if (!onPress) return card;
+  if (!onPress) return inner;
 
   return (
     <TouchableOpacity
       activeOpacity={1}
       onPress={onPress}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
     >
-      {card}
+      {inner}
     </TouchableOpacity>
   );
 }
@@ -151,13 +125,13 @@ export default function FollowStats({
 }: FollowStatsProps) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [list, setList] = useState<UserListParticipant[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setLoading] = useState(false);
 
   const openSheet = useCallback(
     async (kind: "followers" | "following") => {
       setList([]);
-      setIsLoading(true);
-      setSheet(kind); // open immediately so skeleton shows at once
+      setLoading(true);
+      setSheet(kind);
       try {
         const data =
           kind === "followers"
@@ -165,9 +139,9 @@ export default function FollowStats({
             : await apiFetchFollowing(username, token);
         setList(data);
       } catch (e) {
-        console.error("[FollowStats] fetch error:", e);
+        console.error("[FollowStats]", e);
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     },
     [username, token],
@@ -197,20 +171,20 @@ export default function FollowStats({
   return (
     <>
       {/* ── Stats row ── */}
-      <View style={styles.statsSection}>
-        {/* EVENTS — static, no press */}
-        <StatCard value={eventsCount} label="EVENTS" />
+      <View style={styles.statsRow}>
+        <StatItem value={eventsCount} label="EVENTS" />
 
-        {/* FOLLOWERS — tappable, staggered up (matches original layout) */}
-        <StatCard
+        <View style={styles.divider} />
+
+        <StatItem
           value={followersCount}
           label="FOLLOWERS"
-          offsetTop={30}
           onPress={() => openSheet("followers")}
         />
 
-        {/* FOLLOWING — tappable */}
-        <StatCard
+        <View style={styles.divider} />
+
+        <StatItem
           value={followingCount}
           label="FOLLOWING"
           onPress={() => openSheet("following")}
@@ -244,48 +218,64 @@ export default function FollowStats({
   );
 }
 
-// ─── Styles — copied exactly from UserProfileScreen.tsx ──────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const C = {
+  text: "#1A1A1A",
+  sub: "#999999",
+  muted: "#C8C5BE",
+  border: "#E0DDD6",
+  accent: "#FF6B58",
+};
 
 const styles = StyleSheet.create({
-  statsSection: {
+  statsRow: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 50,
-    paddingHorizontal: 8,
-  },
-  statCard: {
     alignItems: "center",
-    position: "relative",
+    justifyContent: "space-around",
+    marginBottom: 24,
   },
-  // UserProfileScreen uses #666666 for statNumber (not #FF6B58 like ProfileScreen)
-  statNumber: {
-    fontSize: 52,
+
+  divider: {
+    width: 1,
+    height: 32,
+    backgroundColor: C.border,
+  },
+
+  statItem: {
+    alignItems: "center",
+    gap: 4,
+    minWidth: 72,
+  },
+
+  // Default (events) — dark number
+  statNum: {
+    fontSize: 38,
     fontWeight: "900",
-    color: "#666666",
+    color: C.text,
     letterSpacing: -2,
-    textShadowColor: "rgba(255,107,88,0.2)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
+    lineHeight: 42,
   },
+
+  // Tappable (followers / following) — accent
+  statNumAccent: {
+    color: C.accent,
+  },
+
   statLabel: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "900",
-    color: "#999999",
-    marginTop: 4,
+    color: C.muted,
+    letterSpacing: 2,
   },
-  statAccent: {
-    width: 30,
-    height: 4,
-    backgroundColor: "#FF6B58",
-    marginTop: 8,
-    borderRadius: 2,
-  },
-  // Extra visual affordance for pressable cards — sits below the accent bar
-  tapHint: {
-    width: 30,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,107,88,0.15)",
-    marginTop: 4,
+
+  // Thin underline affordance on tappable stats
+  statUnderline: {
+    width: 20,
+    height: 1.5,
+    backgroundColor: C.accent,
+    borderRadius: 1,
+    marginTop: 2,
+    opacity: 0.5,
   },
 });

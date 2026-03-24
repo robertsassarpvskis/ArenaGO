@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 interface UserLocation {
   latitude: number;
   longitude: number;
+  city?: string;
 }
 
 export function useLocation() {
@@ -20,15 +21,26 @@ export function useLocation() {
         return;
       }
 
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      try {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
 
-      setLocation({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      });
-      setLoading(false);
+        const [address] = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+
+        setLocation({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          city: address?.city || address?.region || "Unknown",
+        });
+      } catch (error) {
+        setErrorMsg("Failed to get location");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 

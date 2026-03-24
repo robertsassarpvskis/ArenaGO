@@ -1,9 +1,15 @@
 // ─── EventModal.tsx ───────────────────────────────────────────────────────────
 // Event modal for basic (not joined) and participant (already joined) view modes.
 // Author view is handled by AuthorEventModal.tsx.
-// Distance from user location to event is computed inside this component.
+// Redesign: title + time live in the hero, all actions consolidated in the
+// bottom bar (Join / Save / Share), top chrome simplified to Close only.
+// See → Understand → Act layout principle.
 //
-// Map + "Open in Maps" button are delegated to <EventLocationMap />.
+// Dismiss gesture — Bolt Food style:
+//   • Over-scroll past the top of the list (rubber-band, scrollY < -OVERSCROLL_DISMISS)
+//   • Fast downward flick while already at the top (velocity > VELOCITY_DISMISS)
+//   • Drag the handle bar downward as before
+// No-image hero is a flat dark block — no gradient noise.
 
 import JoinEventButton from "@/components/common/buttons/JoinEventButton";
 import EventLocationMap from "@/components/common/event/EventLocationMap";
@@ -25,6 +31,8 @@ import {
   Animated,
   Image,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   Share,
@@ -34,8 +42,6 @@ import {
 } from "react-native";
 import UserProfileModal from "../modal/UserProfileModal";
 import {
-  ACCENT_BG,
-  AMBER_BG,
   Avatar,
   BaseEventModalProps,
   C,
@@ -43,13 +49,19 @@ import {
   Divider,
   EyebrowLabel,
   H_PAD,
-  JOINED_BG,
   MODAL_HEIGHT,
   Pill,
   SCREEN_HEIGHT,
-  sharedS,
+  sharedS
 } from "./EventModalBase";
 import UserListModal, { UserListParticipant } from "./UserListModal";
+
+// ─── Dismiss constants ────────────────────────────────────────────────────────
+
+// px over-scrolled past top required to trigger dismiss (rubber-band)
+const OVERSCROLL_DISMISS = 52;
+// downward velocity threshold (px/ms) for a flick-to-dismiss while at top
+const VELOCITY_DISMISS = 0.55;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -76,16 +88,16 @@ function ParticipantBottomBar({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     Animated.sequence([
       Animated.spring(scaleAnim, {
-        toValue: 1.04,
+        toValue: 1.03,
         useNativeDriver: true,
         speed: 14,
-        bounciness: 8,
+        bounciness: 6,
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         useNativeDriver: true,
         speed: 10,
-        bounciness: 6,
+        bounciness: 4,
       }),
     ]).start();
   }, []);
@@ -95,26 +107,51 @@ function ParticipantBottomBar({ onLeave }: { onLeave: () => void }) {
       <Animated.View
         style={[ES.joinedStatusPill, { transform: [{ scale: scaleAnim }] }]}
       >
-        <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+        <Ionicons name="checkmark-circle" size={17} color="#FFF" />
         <View>
           <Text style={ES.joinedStatusLabel}>YOU'RE IN</Text>
           <Text style={ES.joinedStatusSub}>You're attending</Text>
         </View>
       </Animated.View>
       <Pressable style={ES.leaveBtn} onPress={handleLeave}>
-        <Ionicons name="exit-outline" size={17} color={C.red} />
+        <Ionicons name="exit-outline" size={16} color={C.red} />
         <Text style={ES.leaveBtnText}>LEAVE</Text>
       </Pressable>
     </View>
   );
 }
 
-function BasicBottomBar({ eventId }: { eventId: string }) {
+// Basic bottom bar: Join (flex) + Save + Share icon buttons side by side
+function BasicBottomBar({
+  eventId,
+  isSaved,
+  onToggleSave,
+  onShare,
+}: {
+  eventId: string;
+  isSaved: boolean;
+  onToggleSave: () => void;
+  onShare: () => void;
+}) {
   return (
     <View style={sharedS.bottomInner}>
       <View style={{ flex: 1 }}>
         <JoinEventButton eventId={eventId} variant="modal" />
       </View>
+      <Pressable
+        style={[ES.iconBtn, isSaved && ES.iconBtnSaved]}
+        onPress={onToggleSave}
+        hitSlop={8}
+      >
+        <Ionicons
+          name={isSaved ? "bookmark" : "bookmark-outline"}
+          size={21}
+          color={isSaved ? "#FFF" : C.ink}
+        />
+      </Pressable>
+      <Pressable style={ES.iconBtn} onPress={onShare} hitSlop={8}>
+        <Ionicons name="arrow-redo-outline" size={21} color={C.ink} />
+      </Pressable>
     </View>
   );
 }
@@ -136,38 +173,38 @@ export default function EventModal({
 }: EventModalProps) {
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const backdropOpac = useRef(new Animated.Value(0)).current;
+  // dragY drives the handle-bar drag-to-dismiss (still works as a fallback)
   const dragY = useRef(new Animated.Value(0)).current;
   const isDragging = useRef(false);
   const startY = useRef(0);
 
+  // ── Bolt-Food scroll-to-dismiss ────────────────────────────────────────────
+  // True whenever the list is at the very top (scrollY === 0)
+  const scrollAtTop = useRef(true);
+  // Guard: only fire dismiss once per gesture
+  const dismissing = useRef(false);
+
   const [showParticipants, setShowParticipants] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState<string | null>(null);
 
-  // ─── User location ────────────────────────────────────────────────────────
   const { location: userLocation } = useLocation();
 
-  // ─── Compute distance to this event ──────────────────────────────────────
   const eventDistance = useMemo(() => {
     if (!userLocation || !event) return null;
-
     const coords =
       event.location && typeof event.location === "object"
         ? (event.location as { latitude: number; longitude: number })
         : null;
-
     if (!coords) return null;
-
     const km = getDistanceKm(
       userLocation.latitude,
       userLocation.longitude,
       coords.latitude,
       coords.longitude,
     );
-
-    return formatDistance(km); // e.g. "250 m", "1.4 km", "23 km"
+    return formatDistance(km);
   }, [userLocation, event?.id, event?.location]);
 
-  // ─── Full participants state ──────────────────────────────────────────────
   const [fullParticipants, setFullParticipants] = useState<
     UserListParticipant[]
   >([]);
@@ -184,7 +221,6 @@ export default function EventModal({
 
   const fetchParticipants = useCallback(async () => {
     if (!event?.id || participantsFetched) return;
-
     setParticipantsLoading(true);
     try {
       const res = await fetch(`/api/Events/${event.id}/participants`, {
@@ -193,22 +229,17 @@ export default function EventModal({
           "Content-Type": "application/json",
         },
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       const data = await res.json();
-
       const raw: any[] = Array.isArray(data)
         ? data
         : (data.participants ?? data.items ?? []);
-
       const mapped: UserListParticipant[] = raw.map((p: any) => ({
         username: p.username ?? p.userName ?? "",
         displayName: p.displayName ?? p.display_name ?? p.username ?? "",
         profilePhoto: p.profilePhoto ?? p.profile_photo ?? null,
         bio: p.bio ?? null,
       }));
-
       setFullParticipants(mapped);
       setParticipantsFetched(true);
     } catch (err) {
@@ -236,9 +267,10 @@ export default function EventModal({
     }
   }, [event, fetchParticipants]);
 
-  // ─── Open / close animation ───────────────────────────────────────────────
+  // ── Sheet enter / exit animations ─────────────────────────────────────────
   useEffect(() => {
     if (visible) {
+      dismissing.current = false;
       dragY.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, {
@@ -269,7 +301,70 @@ export default function EventModal({
     }
   }, [visible]);
 
-  // ─── Drag-to-dismiss ──────────────────────────────────────────────────────
+  // ── Shared dismiss animation ───────────────────────────────────────────────
+  const animateDismiss = useCallback(() => {
+    if (dismissing.current) return;
+    dismissing.current = true;
+    Animated.timing(translateY, {
+      toValue: SCREEN_HEIGHT,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      dragY.setValue(0);
+      onClose();
+    });
+  }, [onClose]);
+
+  // ── Bolt-Food scroll-to-dismiss ────────────────────────────────────────────
+  // Strategy: attach to ScrollView's onScroll + onMomentumScrollEnd.
+  //   1. onScroll keeps scrollAtTop in sync.
+  //   2. onScrollBeginDrag: reset dismissing guard.
+  //   3. onMomentumScrollEnd (or onScrollEndDrag for slow flicks):
+  //      if scrollY ≤ 0 AND contentOffset.y crossed below -OVERSCROLL_DISMISS
+  //      → dismiss.
+  //   4. Fast downward velocity while at top → dismiss immediately.
+
+  const handleScrollBeginDrag = useCallback(() => {
+    // allow a new dismiss attempt each time the user starts dragging
+    dismissing.current = false;
+  }, []);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      scrollAtTop.current = y <= 0;
+    },
+    [],
+  );
+
+  const handleScrollEndDrag = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, velocity } = e.nativeEvent;
+      const y = contentOffset.y;
+      const vy = velocity?.y ?? 0;
+
+      // Over-scrolled past threshold while at top
+      if (y < -OVERSCROLL_DISMISS) {
+        animateDismiss();
+        return;
+      }
+      // Fast downward flick from the top
+      if (scrollAtTop.current && vy > VELOCITY_DISMISS) {
+        animateDismiss();
+      }
+    },
+    [animateDismiss],
+  );
+
+  const handleMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      if (y < -OVERSCROLL_DISMISS) animateDismiss();
+    },
+    [animateDismiss],
+  );
+
+  // ── Handle-bar drag-to-dismiss (fallback) ─────────────────────────────────
   const onTouchStart = useCallback((e: any) => {
     isDragging.current = true;
     startY.current = e.nativeEvent.pageY;
@@ -289,14 +384,7 @@ export default function EventModal({
       const dy = e.nativeEvent.pageY - startY.current;
       const vy = e.nativeEvent.velocityY ?? 0;
       if (dy > DISMISS_THRESHOLD || vy > 0.6) {
-        Animated.timing(translateY, {
-          toValue: SCREEN_HEIGHT,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(() => {
-          dragY.setValue(0);
-          onClose();
-        });
+        animateDismiss();
       } else {
         Animated.spring(dragY, {
           toValue: 0,
@@ -306,7 +394,7 @@ export default function EventModal({
         }).start();
       }
     },
-    [onClose],
+    [animateDismiss],
   );
 
   const handleShare = () => {
@@ -322,7 +410,6 @@ export default function EventModal({
 
   if (!event && !isLoading) return null;
 
-  // ─── Interpolations ───────────────────────────────────────────────────────
   const dragProgress = dragY.interpolate({
     inputRange: [0, DISMISS_THRESHOLD],
     outputRange: [0, 1],
@@ -356,7 +443,9 @@ export default function EventModal({
   const timeLabel = event ? getTimeLabel(eventTime) : "";
   const timeFormat = event ? formatEventTime(eventTime) : "";
 
-  const sheetBorderColor = isParticipant ? C.joined : C.accent;
+  // Sheet top border — only shown for participant mode
+  const sheetBorderColor = isParticipant ? C.joined : "transparent";
+  const sheetBorderWidth = isParticipant ? 2 : 0;
 
   const displayParticipants: UserListParticipant[] = participantsFetched
     ? fullParticipants
@@ -370,6 +459,11 @@ export default function EventModal({
   const mapGradient: [string, string] = isParticipant
     ? [C.joined, C.joinedLight]
     : [C.accent, C.accentLight];
+
+  // Hero height: taller when we have an image so the overlaid content has room.
+  // When no image we use a dark fallback so the title text always sits on a
+  // dark surface and remains legible.
+  const hasImage = !!imageUri;
 
   return (
     <>
@@ -392,7 +486,7 @@ export default function EventModal({
             {
               height: MODAL_HEIGHT,
               borderTopColor: sheetBorderColor,
-              borderTopWidth: isParticipant ? 3 : 0,
+              borderTopWidth: sheetBorderWidth,
               transform: [
                 { translateY: Animated.add(translateY, dragY) },
                 { scale: sheetScale },
@@ -411,41 +505,6 @@ export default function EventModal({
             <View style={sharedS.handle} />
           </View>
 
-          {/* Top chrome */}
-          <View style={sharedS.topChrome}>
-            <Pressable style={sharedS.chromeBtn} onPress={onClose}>
-              <Ionicons name="close" size={24} color={C.ink} />
-            </Pressable>
-
-            <View
-              style={{ flexDirection: "row", gap: 8, alignItems: "center" }}
-            >
-              {isParticipant && (
-                <View style={ES.chromeMiniJoinedBadge}>
-                  <Ionicons name="checkmark-circle" size={13} color="#FFF" />
-                  <Text style={ES.chromeMiniJoinedText}>IN</Text>
-                </View>
-              )}
-
-              <Pressable style={sharedS.chromeBtn} onPress={handleShare}>
-                <Ionicons name="arrow-redo-outline" size={24} color={C.ink} />
-              </Pressable>
-
-              {isBasic && (
-                <Pressable
-                  style={[sharedS.chromeBtn, isSaved && sharedS.chromeBtnSaved]}
-                  onPress={onToggleSave}
-                >
-                  <Ionicons
-                    name={isSaved ? "bookmark" : "bookmark-outline"}
-                    size={24}
-                    color={isSaved ? "#FFF" : C.ink}
-                  />
-                </Pressable>
-              )}
-            </View>
-          </View>
-
           {isLoading ? (
             <View style={sharedS.centered}>
               <ActivityIndicator size="large" color={C.accent} />
@@ -457,39 +516,105 @@ export default function EventModal({
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 0 }}
                 showsVerticalScrollIndicator={false}
+                // ── Bolt-Food dismiss: over-scroll up or fast flick down from top
                 bounces
+                overScrollMode="always"
+                scrollEventThrottle={16}
+                onScroll={handleScroll}
+                onScrollBeginDrag={handleScrollBeginDrag}
+                onScrollEndDrag={handleScrollEndDrag}
+                onMomentumScrollEnd={handleMomentumScrollEnd}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* Hero image */}
-                {imageUri && (
-                  <View style={sharedS.hero}>
+                {/* ── HERO — title + time live here ───────────────────────── */}
+                <View style={[ES.hero, !hasImage && ES.heroNoImage]}>
+                  {hasImage && (
                     <Image
                       source={{ uri: imageUri }}
-                      style={sharedS.heroImage}
+                      style={StyleSheet.absoluteFill}
                       resizeMode="cover"
                     />
+                  )}
+                  {/* No-image: flat dark block — no gradient noise */}
+                  {!hasImage && (
+                    <View
+                      style={[
+                        StyleSheet.absoluteFill,
+                        {
+                          backgroundColor: isParticipant
+                            ? "#064e3b"
+                            : "#0F172A",
+                        },
+                      ]}
+                    />
+                  )}
+
+                  {/* Scrim gradient: only when an image is present */}
+                  {hasImage && (
                     <LinearGradient
-                      colors={["rgba(15,23,42,0.15)", "transparent", C.bg]}
-                      locations={[0, 0.45, 1]}
+                      colors={[
+                        "rgba(15,23,42,0.08)",
+                        "rgba(15,23,42,0.20)",
+                        "rgba(15,23,42,0.72)",
+                        C.bg,
+                      ]}
+                      locations={[0, 0.3, 0.72, 1]}
                       style={StyleSheet.absoluteFill}
                     />
+                  )}
+
+                  {/* Optional participant tint overlay */}
+                  {isParticipant && hasImage && (
+                    <View
+                      style={[
+                        StyleSheet.absoluteFill,
+                        { backgroundColor: "rgba(5,150,105,0.06)" },
+                      ]}
+                    />
+                  )}
+
+                  {/* Top-right: close button only — simplified chrome */}
+                  <View style={ES.heroChromeRow}>
                     {isParticipant && (
-                      <View
-                        style={[
-                          StyleSheet.absoluteFill,
-                          { backgroundColor: "rgba(5,150,105,0.06)" },
-                        ]}
-                      />
+                      <View style={ES.heroJoinedBadge}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={12}
+                          color="#FFF"
+                        />
+                        <Text style={ES.heroJoinedBadgeText}>IN</Text>
+                      </View>
                     )}
-                    <View style={sharedS.heroTagRow}>
+                    <Pressable
+                      style={[
+                        ES.heroCloseBtn,
+                        !hasImage && ES.heroCloseBtnLight,
+                      ]}
+                      onPress={onClose}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={20}
+                        color={hasImage ? "#FFF" : C.ink}
+                      />
+                    </Pressable>
+                  </View>
+
+                  {/* Bottom: category + distance pills, then title + time.
+                       Colors flip between white-on-dark (image) and
+                       ink-on-dark (no-image flat block). */}
+                  <View style={ES.heroContent}>
+                    <View style={ES.heroPillRow}>
                       <Pill
                         label={event!.category}
                         bg={
                           isParticipant
-                            ? "rgba(5,150,105,0.90)"
-                            : "rgba(255,107,88,0.92)"
+                            ? "rgba(5,150,105,0.88)"
+                            : hasImage
+                              ? "rgba(15,23,42,0.72)"
+                              : "rgba(255,107,88,0.20)"
                         }
-                        color="#FFF"
+                        color={hasImage || isParticipant ? "#FFF" : C.accent}
                       />
                       {!!eventDistance && (
                         <View
@@ -498,12 +623,14 @@ export default function EventModal({
                             {
                               backgroundColor: "rgba(16,185,129,0.88)",
                               marginLeft: 6,
+                              flexDirection: "row",
+                              alignItems: "center",
                             },
                           ]}
                         >
                           <Ionicons
                             name="navigate"
-                            size={13}
+                            size={12}
                             color="#FFF"
                             style={{ marginRight: 4 }}
                           />
@@ -513,60 +640,54 @@ export default function EventModal({
                         </View>
                       )}
                     </View>
-                  </View>
-                )}
 
-                {/* Title block */}
-                <View
-                  style={[
-                    sharedS.block,
-                    { paddingTop: imageUri ? 6 : 60, paddingBottom: 16 },
-                  ]}
-                >
-                  {!imageUri && (
-                    <>
-                      <Pill
-                        label={event!.category}
-                        bg={isParticipant ? JOINED_BG : ACCENT_BG}
-                        color={isParticipant ? C.joined : C.accent}
-                      />
-                      <View style={{ height: 10 }} />
-                    </>
-                  )}
-                  <Text style={sharedS.bigTitle}>{event!.title}</Text>
-                  <View style={sharedS.timeRow}>
-                    <View
-                      style={[
-                        sharedS.timeBadgeInline,
-                        {
-                          backgroundColor: isParticipant
-                            ? JOINED_BG
-                            : ACCENT_BG,
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name="flash"
-                        size={13}
-                        color={isParticipant ? C.joined : C.accent}
-                      />
-                      <Text
+                    {/* Title: white over image, white over flat dark block too */}
+                    <Text style={ES.heroTitle}>{event!.title}</Text>
+
+                    <View style={sharedS.timeRow}>
+                      <View
                         style={[
-                          sharedS.timeBadgeInlineText,
-                          { color: isParticipant ? C.joined : C.accent },
+                          ES.heroTimeBadge,
+                          {
+                            backgroundColor: isParticipant
+                              ? "rgba(5,150,105,0.30)"
+                              : hasImage
+                                ? "rgba(255,107,88,0.30)"
+                                : "rgba(255,107,88,0.18)",
+                            borderColor: isParticipant
+                              ? "rgba(16,185,129,0.5)"
+                              : "rgba(255,138,115,0.5)",
+                          },
                         ]}
                       >
-                        {timeLabel.toUpperCase()}
-                      </Text>
+                        <Ionicons
+                          name="flash"
+                          size={12}
+                          color={isParticipant ? "#6ee7b7" : "#FFAA99"}
+                        />
+                        <Text
+                          style={[
+                            ES.heroTimeBadgeText,
+                            {
+                              color: isParticipant ? "#6ee7b7" : "#FFAA99",
+                            },
+                          ]}
+                        >
+                          {timeLabel.toUpperCase()}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          sharedS.timeSep,
+                          { backgroundColor: "rgba(255,255,255,0.30)" },
+                        ]}
+                      />
+                      <Text style={ES.heroTimeStr}>{timeFormat}</Text>
                     </View>
-                    <View style={sharedS.timeSep} />
-                    <Text style={sharedS.timeFormatText}>{timeFormat}</Text>
                   </View>
                 </View>
 
-                <Divider />
-
-                {/* Stats bar */}
+                {/* ── STATS BAR — see at a glance ─────────────────────────── */}
                 <View style={ES.statsBar}>
                   <View style={ES.statItem}>
                     <Text style={ES.statValue}>{event!.attendees}</Text>
@@ -575,7 +696,7 @@ export default function EventModal({
                   <View style={ES.statDivider} />
                   <View style={ES.statItem}>
                     <Text style={ES.statValue}>
-                      {event!.maxParticipants ?? "10"}
+                      {event!.maxParticipants ?? "∞"}
                     </Text>
                     <Text style={ES.statLabel}>CAPACITY</Text>
                   </View>
@@ -584,7 +705,7 @@ export default function EventModal({
                     <Text
                       style={[
                         ES.statValue,
-                        !!eventDistance && { color: C.green },
+                        !!eventDistance && ES.statValueGreen,
                       ]}
                     >
                       {eventDistance ?? "—"}
@@ -592,6 +713,8 @@ export default function EventModal({
                     <Text style={ES.statLabel}>DISTANCE</Text>
                   </View>
                 </View>
+
+                <Divider />
 
                 {/* WHERE */}
                 <View style={sharedS.block}>
@@ -604,12 +727,6 @@ export default function EventModal({
                   </Text>
                 </View>
 
-                {/*
-                  EventLocationMap receives:
-                  - coords      → event pin (end)
-                  - userCoords  → user pin (start) + triggers route line + auto-fit region
-                  - gradientColors → themed button matching view mode
-                */}
                 <EventLocationMap
                   coords={coords}
                   userCoords={userLocation}
@@ -639,7 +756,7 @@ export default function EventModal({
                           >
                             <Avatar
                               participant={p}
-                              size={46}
+                              size={44}
                               borderColor={C.bg}
                               onPress={handleOpenParticipants}
                             />
@@ -670,9 +787,7 @@ export default function EventModal({
                         going
                       </Text>
                       {event!.spotsLeft != null && event!.spotsLeft > 0 && (
-                        <View
-                          style={[ES.spotsBadge, { backgroundColor: AMBER_BG }]}
-                        >
+                        <View style={ES.spotsBadge}>
                           <Ionicons
                             name="ticket-outline"
                             size={11}
@@ -700,7 +815,7 @@ export default function EventModal({
                   </>
                 )}
 
-                {/* ORGANIZER */}
+                {/* HOST */}
                 <Pressable
                   style={ES.hostCard}
                   onPress={() => {
@@ -708,8 +823,8 @@ export default function EventModal({
                       setSelectedUsername(event!.author.username);
                   }}
                 >
-                  <View style={[ES.hostStamp, { borderColor: C.joined }]}>
-                    <Text style={[ES.hostStampText, { color: C.joined }]}>
+                  <View style={ES.hostStamp}>
+                    <Text style={ES.hostStampText}>
                       {event!.author?.username?.substring(0, 2).toUpperCase() ??
                         "??"}
                     </Text>
@@ -721,20 +836,15 @@ export default function EventModal({
                     </Text>
                   </View>
                   <View style={ES.hostArrow}>
-                    <Ionicons name="arrow-forward" size={14} color={C.ink} />
+                    <Ionicons name="arrow-forward" size={13} color={C.mid} />
                   </View>
                 </Pressable>
 
                 <View style={{ height: 120 }} />
               </ScrollView>
 
-              {/* Bottom bar */}
-              <View
-                style={[
-                  sharedS.bottomBar,
-                  isParticipant && { borderTopColor: C.joined },
-                ]}
-              >
+              {/* ── BOTTOM BAR — all actions in one row ─────────────────── */}
+              <View style={sharedS.bottomBar}>
                 {isParticipant && (
                   <ParticipantBottomBar
                     onLeave={() => {
@@ -743,14 +853,20 @@ export default function EventModal({
                     }}
                   />
                 )}
-                {isBasic && <BasicBottomBar eventId={event!.id} />}
+                {isBasic && (
+                  <BasicBottomBar
+                    eventId={event!.id}
+                    isSaved={isSaved}
+                    onToggleSave={onToggleSave}
+                    onShare={handleShare}
+                  />
+                )}
               </View>
             </>
           )}
         </Animated.View>
       </Modal>
 
-      {/* Participant list */}
       <UserListModal
         visible={showParticipants}
         participants={displayParticipants}
@@ -758,11 +874,9 @@ export default function EventModal({
         isLoading={participantsLoading}
         onClose={() => setShowParticipants(false)}
         accentColor={isParticipant ? C.joined : C.accent}
-        // accentBg={isParticipant ? JOINED_BG : ACCENT_BG}
         onSelectUser={handleSelectUser}
       />
 
-      {/* Profile modal */}
       {selectedUsername !== null && (
         <UserProfileModal
           username={selectedUsername}
@@ -776,11 +890,108 @@ export default function EventModal({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const ES = StyleSheet.create({
+  // ── Hero — title + time overlay ─────────────────────────────────────────────
+  hero: {
+    height: 320,
+    width: "100%",
+    position: "relative",
+    justifyContent: "flex-end",
+  },
+  // No image: shorter flat block — no image, no gradient, clean dark surface
+  heroNoImage: {
+    height: 220,
+  },
+
+  // Close button + optional "IN" badge float in the top-right of the hero
+  heroChromeRow: {
+    position: "absolute",
+    top: 14,
+    right: H_PAD,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 20,
+  },
+  // Over dark image — frosted dark glass
+  heroCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Over flat dark block (no image) — neutral warm-white, ink icon
+  heroCloseBtnLight: {
+    backgroundColor: "rgba(245,244,239,0.95)",
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  heroJoinedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: C.joined,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  heroJoinedBadgeText: {
+    fontSize: 10,
+    fontWeight: "900",
+    color: "#FFF",
+    letterSpacing: 0.8,
+  },
+
+  // Content anchored to the bottom of the hero
+  heroContent: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 18,
+  },
+  heroPillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+  heroTitle: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: "#FFF",
+    letterSpacing: -0.8,
+    lineHeight: 34,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  heroTimeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  heroTimeBadgeText: {
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  heroTimeStr: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.80)",
+    letterSpacing: -0.2,
+  },
+
+  // ── Stats bar ─────────────────────────────────────────────────────────────
   statsBar: {
     flexDirection: "row",
-    paddingVertical: 18,
+    paddingVertical: 20,
     paddingHorizontal: H_PAD,
-    gap: 0,
   },
   statItem: { flex: 1, alignItems: "center" },
   statValue: {
@@ -789,38 +1000,48 @@ const ES = StyleSheet.create({
     color: C.ink,
     letterSpacing: -0.5,
   },
+  statValueGreen: {
+    color: C.green,
+  },
   statLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     color: C.muted,
-    letterSpacing: 1.2,
+    letterSpacing: 1.5,
     marginTop: 3,
+    textTransform: "uppercase",
   },
-  statDivider: { width: 1, backgroundColor: C.divider, marginVertical: 4 },
+  statDivider: {
+    width: StyleSheet.hairlineWidth * 2,
+    backgroundColor: C.divider,
+    marginVertical: 6,
+  },
 
-  chromeMiniJoinedBadge: {
-    flexDirection: "row",
+  // ── Icon buttons in the basic bottom bar ──────────────────────────────────
+  iconBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: "rgba(245,244,239,0.98)",
+    borderWidth: 1.5,
+    borderColor: "rgba(0,0,0,0.09)",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: C.joined,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 8,
+    justifyContent: "center",
+    flexShrink: 0,
   },
-  chromeMiniJoinedText: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#FFF",
-    letterSpacing: 0.8,
+  iconBtnSaved: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
   },
 
+  // ── Participant bottom bar pill ───────────────────────────────────────────
   joinedStatusPill: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     backgroundColor: C.joined,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
@@ -832,20 +1053,22 @@ const ES = StyleSheet.create({
   },
   joinedStatusSub: {
     fontSize: 11,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.75)",
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.70)",
     marginTop: 1,
   },
+
+  // Leave button — red is semantic (destructive)
   leaveBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingVertical: 16,
     paddingHorizontal: 18,
-    borderWidth: 2,
-    borderColor: `${C.red}50`,
-    borderRadius: 12,
-    backgroundColor: `${C.red}10`,
+    borderWidth: 1.5,
+    borderColor: `${C.red}40`,
+    borderRadius: 14,
+    backgroundColor: `${C.red}08`,
   },
   leaveBtnText: {
     fontSize: 12,
@@ -854,6 +1077,7 @@ const ES = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
+  // ── Attendees ─────────────────────────────────────────────────────────────
   attendeeBlock: {
     flexDirection: "row",
     alignItems: "center",
@@ -864,12 +1088,12 @@ const ES = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   overflowAvatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: C.divider,
     borderWidth: 2.5,
     borderColor: C.bg,
@@ -897,59 +1121,54 @@ const ES = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    backgroundColor: "rgba(245,158,11,0.10)",
   },
   spotsText: { fontSize: 11, fontWeight: "900", letterSpacing: 0.8 },
-  seeAllChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: ACCENT_BG,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  seeAllText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: C.accent,
-    letterSpacing: 1.2,
-  },
 
+  // ── Host card ─────────────────────────────────────────────────────────────
   hostCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
     paddingHorizontal: H_PAD,
     paddingVertical: 20,
   },
   hostStamp: {
-    width: 54,
-    height: 54,
+    width: 52,
+    height: 52,
     borderRadius: 12,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(0,0,0,0.05)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 1.5,
+    borderColor: "rgba(0,0,0,0.08)",
   },
-  hostStampText: { fontSize: 18, fontWeight: "900", letterSpacing: 1 },
-  hostLabel: {
-    fontSize: 11,
+  hostStampText: {
+    fontSize: 16,
     fontWeight: "900",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+    color: C.ink,
+  },
+  hostLabel: {
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.5,
     color: C.muted,
+    textTransform: "uppercase",
   },
   hostUsername: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "900",
     color: C.ink,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
+    marginTop: 1,
   },
   hostArrow: {
-    width: 34,
-    height: 34,
-    borderRadius: 7,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: C.ink,
+    borderColor: C.divider,
     alignItems: "center",
     justifyContent: "center",
   },

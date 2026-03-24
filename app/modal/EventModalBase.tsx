@@ -16,7 +16,7 @@ import {
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 
 export const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.9;
+export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.88;
 export const DISMISS_THRESHOLD = 140;
 export const H_PAD = 22;
 
@@ -36,17 +36,17 @@ export const C = {
   divider: "#E2E8F0",
   bg: "#F8F7F2",
   card: "#FFFFFF",
-  overlay: "rgba(15,23,42,0.65)",
+  overlay: "rgba(15,23,42,0.60)",
   joined: "#059669",
   joinedLight: "#10B981",
 } as const;
 
-export const ACCENT_BG = "rgba(255,107,88,0.12)";
-export const GREEN_BG = "rgba(16,185,129,0.12)";
-export const AMBER_BG = "rgba(245,158,11,0.12)";
-export const JOINED_BG = "rgba(5,150,105,0.12)";
-export const RED_BG = "rgba(239,68,68,0.12)";
-export const BLUE_BG = "rgba(59,130,246,0.12)";
+export const ACCENT_BG = "rgba(255,107,88,0.10)";
+export const GREEN_BG = "rgba(16,185,129,0.10)";
+export const AMBER_BG = "rgba(245,158,11,0.10)";
+export const JOINED_BG = "rgba(5,150,105,0.10)";
+export const RED_BG = "rgba(239,68,68,0.10)";
+export const BLUE_BG = "rgba(59,130,246,0.10)";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ export function Avatar({
         backgroundColor: C.bg,
         shadowColor: g1,
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.25,
         shadowRadius: 6,
         elevation: 4,
       }}
@@ -231,7 +231,7 @@ export const sharedS = StyleSheet.create({
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.18,
     shadowRadius: 28,
     elevation: 24,
   },
@@ -256,20 +256,25 @@ export const sharedS = StyleSheet.create({
     zIndex: 50,
   },
 
+  // ── Chrome buttons — neutral by default, accent only when active ──────────
   chromeBtn: {
     width: 40,
     height: 40,
     borderRadius: 12,
+    // Neutral warm-white surface — no accent border
     backgroundColor: "rgba(245,244,239,0.95)",
     borderWidth: 1.5,
-    borderColor: C.accent,
+    borderColor: "rgba(0,0,0,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
-  chromeBtnAccent: { backgroundColor: C.accent, borderColor: C.accent },
-  chromeBtnSaved: { backgroundColor: C.accent, borderColor: C.accent },
+  // Applied on top of chromeBtn when the action is "active" (e.g. saved)
+  chromeBtnSaved: {
+    backgroundColor: C.ink,
+    borderColor: C.ink,
+  },
 
-  hero: { height: 380, width: "100%", position: "relative" },
+  hero: { height: 360, width: "100%", position: "relative" },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
     width: "100%",
@@ -294,19 +299,20 @@ export const sharedS = StyleSheet.create({
   block: { paddingHorizontal: H_PAD, paddingTop: 20, paddingBottom: 6 },
 
   eyebrow: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 2,
     marginBottom: 6,
     color: C.muted,
+    textTransform: "uppercase",
   },
 
   bigTitle: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: "900",
     color: C.ink,
-    letterSpacing: -1,
-    lineHeight: 38,
+    letterSpacing: -0.8,
+    lineHeight: 36,
     textTransform: "uppercase",
     marginTop: 6,
   },
@@ -327,28 +333,28 @@ export const sharedS = StyleSheet.create({
     borderRadius: 8,
   },
   timeBadgeInlineText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
     letterSpacing: 0.5,
   },
   timeSep: {
-    width: 4,
-    height: 14,
-    backgroundColor: "#bbbebf",
+    width: 3,
+    height: 12,
+    backgroundColor: C.divider,
     borderRadius: 2,
   },
   timeFormatText: {
-    fontSize: 21,
-    fontWeight: "900",
+    fontSize: 19,
+    fontWeight: "800",
     color: C.mid,
     letterSpacing: -0.2,
   },
 
   locationText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "800",
     color: C.ink,
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
     marginTop: 2,
     marginBottom: 16,
   },
@@ -433,14 +439,15 @@ export const sharedS = StyleSheet.create({
     letterSpacing: 3,
   },
 
+  // ── Bottom bar — neutral border, no accent bleed ──────────────────────────
   bottomBar: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: C.bg,
-    borderTopWidth: 1,
-    borderTopColor: C.accent,
+    borderTopWidth: StyleSheet.hairlineWidth * 2,
+    borderTopColor: C.divider,
     zIndex: 40,
   },
   bottomInner: {

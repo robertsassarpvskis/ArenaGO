@@ -11,7 +11,6 @@ import { useNavigation } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import MapView, { Marker } from "react-native-maps";
 import { SvgUri } from "react-native-svg";
-import { Container } from "../../../components/common/Container";
 import {
   CategoryOption,
   rgbaToString,
@@ -34,6 +33,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // Fallback categories
 const CATEGORIES: CategoryOption[] = [
@@ -329,25 +329,18 @@ export default function CreateEvent() {
 
   return (
     <>
-      <StatusBar style="dark" />
-      <Container backgroundColor={URBAN_COLORS.background}>
+      <SafeAreaView style={styles.scrollContent}>
+        <StatusBar style="dark" />
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
-              onPress={() => navigation.goBack()}
+              onPress={() => {}}
               style={styles.closeButton}
-            >
-              <Ionicons
-                name="close"
-                size={28}
-                color={URBAN_COLORS.textPrimary}
-              />
-            </TouchableOpacity>
+            ></TouchableOpacity>
             <View style={styles.headerTitleContainer}>
               <Text style={styles.headerTitle}>Create Event</Text>
             </View>
@@ -373,10 +366,10 @@ export default function CreateEvent() {
             </View>
 
             {/* ─────────────────────────────────────────────────────────
-                CATEGORY — full wrapping 3-column grid
-                Shows ALL user interests. Each card: icon bubble + label.
-                Selected card fills with the category's own colour.
-            ───────────────────────────────────────────────────────── */}
+                  CATEGORY — full wrapping 3-column grid
+                  Shows ALL user interests. Each card: icon bubble + label.
+                  Selected card fills with the category's own colour.
+              ───────────────────────────────────────────────────────── */}
             <View style={styles.field}>
               <View style={styles.fieldHeader}>
                 <View style={styles.iconWrapperRequired}>
@@ -422,11 +415,7 @@ export default function CreateEvent() {
                       {/* Checkmark badge top-right when selected */}
                       {isSelected && (
                         <View style={styles.cardCheckBadge}>
-                          <Ionicons
-                            name="checkmark"
-                            size={11}
-                            color="#fff"
-                          />
+                          <Ionicons name="checkmark" size={11} color="#fff" />
                         </View>
                       )}
 
@@ -482,8 +471,8 @@ export default function CreateEvent() {
             </View>
 
             {/* ─────────────────────────────────────────────────────────
-                LOCATION — search with live autocomplete + map tap
-            ───────────────────────────────────────────────────────── */}
+                  LOCATION — search with live autocomplete + map tap
+              ───────────────────────────────────────────────────────── */}
             <View style={styles.field}>
               <View style={styles.fieldHeader}>
                 <View style={styles.iconWrapperRequired}>
@@ -551,11 +540,7 @@ export default function CreateEvent() {
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.searchClearBtn}
                     >
-                      <Ionicons
-                        name="close-circle"
-                        size={18}
-                        color="#9CA3AF"
-                      />
+                      <Ionicons name="close-circle" size={18} color="#9CA3AF" />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -581,10 +566,7 @@ export default function CreateEvent() {
                             color={URBAN_COLORS.primary}
                           />
                         </View>
-                        <Text
-                          style={styles.suggestionText}
-                          numberOfLines={2}
-                        >
+                        <Text style={styles.suggestionText} numberOfLines={2}>
                           {shortenSuggestion(item.display_name)}
                         </Text>
                         <Ionicons
@@ -622,9 +604,7 @@ export default function CreateEvent() {
                   <Marker
                     coordinate={location}
                     draggable
-                    onDragEnd={(e) =>
-                      handleMapPress(e.nativeEvent.coordinate)
-                    }
+                    onDragEnd={(e) => handleMapPress(e.nativeEvent.coordinate)}
                     title={locationName || "Event Location"}
                   />
                 )}
@@ -644,11 +624,7 @@ export default function CreateEvent() {
 
               {locationName && !fetchingLocationName && (
                 <View style={styles.locationNameContainer}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color="#10B981"
-                  />
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
                   <Text style={styles.locationNameText}>{locationName}</Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -658,11 +634,7 @@ export default function CreateEvent() {
                     }}
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Ionicons
-                      name="close-circle"
-                      size={18}
-                      color="#6B7280"
-                    />
+                    <Ionicons name="close-circle" size={18} color="#6B7280" />
                   </TouchableOpacity>
                 </View>
               )}
@@ -834,8 +806,7 @@ export default function CreateEvent() {
                       ]}
                       onPress={applyCustomParticipants}
                       disabled={
-                        !customParticipants ||
-                        isNaN(Number(customParticipants))
+                        !customParticipants || isNaN(Number(customParticipants))
                       }
                     >
                       <Text style={styles.applyButtonText}>Set</Text>
@@ -962,14 +933,13 @@ export default function CreateEvent() {
             )}
           </TouchableOpacity>
         </ScrollView>
-      </Container>
+      </SafeAreaView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 16,
     paddingHorizontal: 16,
   },
   header: {
@@ -991,9 +961,7 @@ const styles = StyleSheet.create({
     color: URBAN_COLORS.textPrimary,
     letterSpacing: -0.5,
   },
-  requiredSection: {
-    marginBottom: 12,
-  },
+  requiredSection: {},
   optionalSection: {
     marginBottom: 24,
   },

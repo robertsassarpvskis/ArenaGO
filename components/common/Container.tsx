@@ -13,7 +13,7 @@ type ContainerProps = ViewProps & {
 
 export const Container = ({
   children,
-  backgroundColor = "#fffcf4",
+  backgroundColor = "#FAFAFA",
   padded = true,
   style,
   ...props
@@ -24,9 +24,7 @@ export const Container = ({
     <SafeAreaView
       style={[
         {
-          flex: 1,
           backgroundColor,
-          paddingBottom: 0,
         },
         style,
       ]}

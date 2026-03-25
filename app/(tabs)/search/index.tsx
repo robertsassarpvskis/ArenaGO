@@ -150,7 +150,7 @@ export default function UserSearchScreen() {
           </View>
 
           {/* Arrow Icon */}
-          <Ionicons name="chevron-forward" size={20} color="#FF6B58" />
+          <Ionicons name="chevron-forward" size={18} color="#C7C7C7" />
         </View>
       </Pressable>
     );
@@ -186,7 +186,7 @@ export default function UserSearchScreen() {
         {/* Content */}
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#FF6B58" />
+            <ActivityIndicator color="#FF6B58" />
           </View>
         ) : error ? (
           <Text style={styles.error}>{error}</Text>
@@ -202,8 +202,7 @@ export default function UserSearchScreen() {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                tintColor="#FF6B58"
-                colors={["#FF6B58"]}
+                colors={["#ff6b58"]}
               />
             }
           />
@@ -225,34 +224,33 @@ export default function UserSearchScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: "#FAF6EE",
+    // flex: 1,
+    backgroundColor: "FFFFFF",
     paddingHorizontal: 16,
-    marginTop: 16,
   },
 
   searchFieldGroup: {
-    marginBottom: 20,
     position: "relative",
   },
 
   searchInput: {
     flex: 1,
-    fontSize: 32,
+    fontSize: 18,
     fontWeight: "800",
     color: "#1A1A1A",
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   searchBorder: {
-    height: 3,
-    backgroundColor: "#FF6B58",
-    marginTop: 8,
+    display: "none",
   },
   searchRow: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
+    backgroundColor: "#F7F7F7",
+    borderRadius: 14,
+    height: 48,
   },
 
   clearButton: {
@@ -277,15 +275,10 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#FFF",
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-    borderWidth: 2,
-    borderColor: "rgba(255, 107, 88, 0.1)",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
 
   cardPressed: {
@@ -305,7 +298,7 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 16,
-    backgroundColor: "#FF6B58",
+    backgroundColor: "#F1F1F1",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#FF6B58",
@@ -318,7 +311,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 20,
     fontWeight: "900",
-    color: "#FFF",
+    color: "#555",
     letterSpacing: 1,
   },
 
@@ -328,16 +321,15 @@ const styles = StyleSheet.create({
   },
 
   name: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#1A1A1A",
-    letterSpacing: -0.5,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111",
   },
 
   username: {
     fontSize: 13,
-    color: "#666",
-    fontWeight: "600",
+    color: "#888",
+    fontWeight: "500",
   },
 
   interestsRow: {
@@ -351,15 +343,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: "#FAF6EE",
-    borderWidth: 1,
+    backgroundColor: "#F2F2F2",
+    borderWidth: 0,
     borderColor: "#FF6B58",
   },
 
   interestText: {
-    color: "#FF6B58",
+    color: "#555",
+    fontWeight: "600",
     fontSize: 11,
-    fontWeight: "800",
     letterSpacing: 0.5,
   },
 

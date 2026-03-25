@@ -1,7 +1,8 @@
 // ─── EventModalBase.tsx ───────────────────────────────────────────────────────
-// Shared tokens, types, helpers, and micro-components used by all event modals.
+// Design system: Minimalist × Street/Urban.
+// Palette is near-monochrome. Accent (#FF6B58) used sparingly — status only.
+// No gradients. No decorative blobs. Every element earns its place.
 
-import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
 import {
   Dimensions,
@@ -16,15 +17,17 @@ import {
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 
 export const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.88;
-export const DISMISS_THRESHOLD = 140;
-export const H_PAD = 22;
+export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.9;
+export const DISMISS_THRESHOLD = 120;
+export const H_PAD = 20;
 
-// ─── Colour tokens ────────────────────────────────────────────────────────────
+// ─── Design Tokens ────────────────────────────────────────────────────────────
 
 export const C = {
   accent: "#FF6B58",
   accentLight: "#FF8A73",
+  joined: "#059669",
+  joinedLight: "#10B981",
   green: "#10B981",
   amber: "#F59E0B",
   red: "#EF4444",
@@ -34,19 +37,10 @@ export const C = {
   mid: "#64748B",
   muted: "#94A3B8",
   divider: "#E2E8F0",
-  bg: "#F8F7F2",
+  bg: "#F4F4F5",
   card: "#FFFFFF",
-  overlay: "rgba(15,23,42,0.60)",
-  joined: "#059669",
-  joinedLight: "#10B981",
+  overlay: "rgba(15,23,42,0.65)",
 } as const;
-
-export const ACCENT_BG = "rgba(255,107,88,0.10)";
-export const GREEN_BG = "rgba(16,185,129,0.10)";
-export const AMBER_BG = "rgba(245,158,11,0.10)";
-export const JOINED_BG = "rgba(5,150,105,0.10)";
-export const RED_BG = "rgba(239,68,68,0.10)";
-export const BLUE_BG = "rgba(59,130,246,0.10)";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,13 +81,14 @@ export interface BaseEventModalProps {
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 
+// Monochrome avatar palette — hues based on the ink/mid/accent family
 const AVATAR_PALETTES: Array<[string, string]> = [
+  ["#0F172A", "#1E293B"],
+  ["#334155", "#475569"],
   ["#FF6B58", "#FF8A73"],
-  ["#10B981", "#34D399"],
-  ["#3B82F6", "#60A5FA"],
-  ["#8B5CF6", "#A78BFA"],
+  ["#059669", "#10B981"],
+  ["#64748B", "#94A3B8"],
   ["#F59E0B", "#FCD34D"],
-  ["#EF4444", "#F87171"],
 ];
 
 export const avatarGradient = (seed: string): [string, string] =>
@@ -120,45 +115,60 @@ export const openMaps = (lat: number, lng: number, label?: string) => {
   );
 };
 
-// ─── Shared micro-components ──────────────────────────────────────────────────
+// ─── Micro-components ─────────────────────────────────────────────────────────
 
-export const Divider = ({ heavy }: { heavy?: boolean }) => (
+// Thin 1px rule — consistent throughout
+export const Divider = () => (
   <View
     style={{
-      height: heavy ? 2 : StyleSheet.hairlineWidth * 2,
-      backgroundColor: heavy ? C.ink : C.divider,
-      marginHorizontal: heavy ? 0 : H_PAD,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: C.divider,
+      marginHorizontal: H_PAD,
     }}
   />
 );
 
-export const EyebrowLabel = ({
+// Small all-caps label above sections
+export const SectionLabel = ({
   children,
   color = C.muted,
 }: {
   children: string;
   color?: string;
-}) => <Text style={[sharedS.eyebrow, { color }]}>{children}</Text>;
+}) => <Text style={[sharedS.sectionLabel, { color }]}>{children}</Text>;
 
-export function Pill({
+// Tag chip — used for category
+export function Tag({
   label,
-  bg,
-  color,
+  outlined = false,
 }: {
   label: string;
-  bg: string;
-  color: string;
+  outlined?: boolean;
 }) {
   return (
-    <View style={[sharedS.pill, { backgroundColor: bg }]}>
-      <Text style={[sharedS.pillText, { color }]}>{label.toUpperCase()}</Text>
+    <View
+      style={[
+        sharedS.tag,
+        outlined
+          ? {
+              backgroundColor: "transparent",
+              borderColor: C.divider,
+              borderWidth: 1,
+            }
+          : { backgroundColor: C.ink },
+      ]}
+    >
+      <Text style={[sharedS.tagText, { color: outlined ? C.mid : "#FFF" }]}>
+        {label.toUpperCase()}
+      </Text>
     </View>
   );
 }
 
+// Avatar — square, minimal border, ink-toned fallback
 export function Avatar({
   participant,
-  size = 46,
+  size = 40,
   borderColor = C.bg,
   onPress,
 }: {
@@ -167,8 +177,7 @@ export function Avatar({
   borderColor?: string;
   onPress?: () => void;
 }) {
-  const [g1, g2] = avatarGradient(participant.username);
-  const radius = size * 0.28;
+  const [bg] = avatarGradient(participant.username);
 
   return (
     <Pressable
@@ -176,37 +185,36 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        borderRadius: radius,
-        borderWidth: 2.5,
+        borderRadius: 10,
+        borderWidth: 2,
         borderColor,
         overflow: "hidden",
-        backgroundColor: C.bg,
-        shadowColor: g1,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-        elevation: 4,
+        backgroundColor: bg,
       }}
     >
       {participant.profilePhoto ? (
         <Image
           source={{ uri: participant.profilePhoto.url }}
           style={StyleSheet.absoluteFill}
+          resizeMode="cover"
         />
       ) : (
-        <LinearGradient
-          colors={[g1, g2]}
+        <View
           style={[
             StyleSheet.absoluteFill,
-            { justifyContent: "center", alignItems: "center" },
+            {
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: bg,
+            },
           ]}
         >
           <Text
-            style={{ color: "#FFF", fontSize: size * 0.3, fontWeight: "900" }}
+            style={{ color: "#FFF", fontSize: size * 0.3, fontWeight: "800" }}
           >
             {ini(participant.displayName)}
           </Text>
-        </LinearGradient>
+        </View>
       )}
     </Pressable>
   );
@@ -215,238 +223,117 @@ export function Avatar({
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 export const sharedS = StyleSheet.create({
+  // Modal chrome
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: C.overlay,
   },
-
   sheet: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: C.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    elevation: 24,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 20,
   },
-
-  handleRow: { paddingVertical: 10, alignItems: "center", zIndex: 10 },
+  handleRow: {
+    paddingTop: 10,
+    paddingBottom: 6,
+    alignItems: "center",
+    zIndex: 10,
+  },
   handle: {
-    width: 38,
-    height: 4,
+    width: 32,
+    height: 3,
     borderRadius: 2,
-    backgroundColor: "#CBD5E1",
-  },
-
-  topChrome: {
-    position: "absolute",
-    top: 35,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: H_PAD,
-    zIndex: 50,
-  },
-
-  // ── Chrome buttons — neutral by default, accent only when active ──────────
-  chromeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    // Neutral warm-white surface — no accent border
-    backgroundColor: "rgba(245,244,239,0.95)",
-    borderWidth: 1.5,
-    borderColor: "rgba(0,0,0,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  // Applied on top of chromeBtn when the action is "active" (e.g. saved)
-  chromeBtnSaved: {
-    backgroundColor: C.ink,
-    borderColor: C.ink,
-  },
-
-  hero: { height: 360, width: "100%", position: "relative" },
-  heroImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: "100%",
-    height: "100%",
-  },
-  heroTagRow: {
-    position: "absolute",
-    bottom: 18,
-    left: H_PAD,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-
-  pill: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 7,
-  },
-  pillText: { fontSize: 13, fontWeight: "900", letterSpacing: 1.5 },
-
-  block: { paddingHorizontal: H_PAD, paddingTop: 20, paddingBottom: 6 },
-
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 2,
-    marginBottom: 6,
-    color: C.muted,
-    textTransform: "uppercase",
-  },
-
-  bigTitle: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: C.ink,
-    letterSpacing: -0.8,
-    lineHeight: 36,
-    textTransform: "uppercase",
-    marginTop: 6,
-  },
-
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 12,
-    flexWrap: "wrap",
-  },
-  timeBadgeInline: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  timeBadgeInlineText: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  timeSep: {
-    width: 3,
-    height: 12,
     backgroundColor: C.divider,
-    borderRadius: 2,
-  },
-  timeFormatText: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: C.mid,
-    letterSpacing: -0.2,
   },
 
-  locationText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: C.ink,
-    letterSpacing: -0.3,
-    marginTop: 2,
-    marginBottom: 16,
+  // Section spacing
+  block: {
+    paddingHorizontal: H_PAD,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
-  edgeMap: {
-    height: 300,
-    marginHorizontal: -H_PAD,
-    position: "relative",
-    marginBottom: 12,
-  },
-  mapPillOverlay: {
-    position: "absolute",
-    bottom: 10,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(15,23,42,0.72)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  mapPillText: {
-    color: "#FFF",
-    fontSize: 11,
+
+  // Typography
+  sectionLabel: {
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 0.4,
-  },
-  mapsLinkBtn: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  mapsLinkGrad: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-  },
-  mapsLinkText: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#FFF",
-    letterSpacing: 1.5,
+    letterSpacing: 2.5,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    color: C.muted,
   },
 
+  // Tag / chip
+  tag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 5,
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.8,
+  },
+
+  // Body copy
   bodyText: {
     fontSize: 15,
     color: C.mid,
-    lineHeight: 25,
-    fontWeight: "500",
+    lineHeight: 24,
+    fontWeight: "400",
+  },
+
+  // Location
+  locationText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: C.ink,
+    letterSpacing: -0.2,
     marginTop: 4,
   },
 
-  distanceBadge: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  distanceText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: C.green,
-    letterSpacing: 0.3,
+  // Map wrapper
+  edgeMap: {
+    height: 200,
+    marginHorizontal: H_PAD,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 4,
   },
 
+  // Loading
   centered: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
   },
   loadingText: {
-    fontSize: 11,
-    fontWeight: "900",
+    fontSize: 10,
+    fontWeight: "800",
     color: C.ink,
     letterSpacing: 3,
   },
 
-  // ── Bottom bar — neutral border, no accent bleed ──────────────────────────
+  // Bottom bar
   bottomBar: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: C.bg,
-    borderTopWidth: StyleSheet.hairlineWidth * 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.divider,
     zIndex: 40,
   },
@@ -454,7 +341,7 @@ export const sharedS = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     paddingHorizontal: H_PAD,
-    paddingTop: 14,
-    paddingBottom: Platform.OS === "ios" ? 38 : 22,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
   },
 });

@@ -13,6 +13,7 @@ export interface Profile {
     url: string;
     contentType: string;
   };
+
   birthDate: string;
   gender: boolean;
   preferredLanguages: string[];

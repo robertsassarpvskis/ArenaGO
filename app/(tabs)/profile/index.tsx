@@ -258,7 +258,7 @@ export default function ProfileScreen() {
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const C = {
-  bg: "#F5F2EC", // warm wall
+  bg: "#FAFAFA", // warm wall
   surface: "#EDEAE3", // card / chip surface
   border: "#DDD9D1", // quiet borders
   text: "#1A1A1A", // primary

@@ -73,6 +73,7 @@ const DS = {
   ink40: "#A0A0A0",
   inkHair: "rgba(0,0,0,0.08)",
   white: "#FFFFFF",
+  bg: "#FAFAFA",
   fontBold: "700" as const,
   fontSemi: "600" as const,
   fontMed: "500" as const,
@@ -729,7 +730,7 @@ export default function EventScreen() {
 const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: DS.white,
+    backgroundColor: DS.bg,
   },
 
   listContent: {

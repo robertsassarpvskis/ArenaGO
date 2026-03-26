@@ -6,9 +6,10 @@ const API_URL = "http://217.182.74.113:30080/api/Events";
 
 export interface CreateEventPayload {
   title: string;
-  description: string;
-  interestId: string;
-  maxParticipants: number;
+  description?: string;
+  interestId?: string;
+  customInterestName?: string;
+  maxParticipants?: number;
   thumbnailUploadRequest?: {
     uri: string;
     type: string;
@@ -19,8 +20,8 @@ export interface CreateEventPayload {
     latitude: number;
     longitude: number;
   };
-  startScheduledTo: string; // ISO string
-  endScheduledTo?: string; // ISO string optional
+  startScheduledTo: string;
+  endScheduledTo?: string;
 }
 
 export function useCreateEvent(token: string | null) {
@@ -36,39 +37,58 @@ export function useCreateEvent(token: string | null) {
 
       const formData = new FormData();
 
-      formData.append("title", payload.title);
-      formData.append("description", payload.description);
-      formData.append("interestId", payload.interestId);
-      formData.append("maxParticipants", payload.maxParticipants.toString());
-      formData.append("locationName", payload.locationName);
-      formData.append("startScheduledTo", payload.startScheduledTo);
-
-      if (payload.endScheduledTo) {
-        formData.append("endScheduledTo", payload.endScheduledTo);
-      }
-
-      // ✅ Send as flat dot-notation fields — ASP.NET Core model binding
-      // does NOT parse JSON strings inside FormData, it needs flat fields
+      // ── Required fields ──────────────────────────────────────────────────────
+      formData.append("Title", payload.title);
+      formData.append("LocationName", payload.locationName);
       formData.append(
-        "location.latitude",
+        "Location.Latitude",
         payload.location.latitude.toString(),
       );
       formData.append(
-        "location.longitude",
+        "Location.Longitude",
         payload.location.longitude.toString(),
       );
+      formData.append("StartScheduledTo", payload.startScheduledTo);
+
+      // ── Interest: real ID takes priority, custom name is the fallback ────────
+      // Both can coexist (e.g. "Music" + "Jazz night sub-tag)
+      if (payload.interestId) {
+        formData.append("InterestId", payload.interestId);
+      }
+      if (payload.customInterestName?.trim()) {
+        formData.append(
+          "CustomInterestName",
+          payload.customInterestName.trim(),
+        );
+      }
+
+      // ── Optional fields ──────────────────────────────────────────────────────
+      if (payload.description?.trim()) {
+        formData.append("Description", payload.description.trim());
+      }
+
+      if (payload.maxParticipants && payload.maxParticipants > 0) {
+        formData.append("MaxParticipants", payload.maxParticipants.toString());
+      }
+
+      if (payload.endScheduledTo) {
+        formData.append("EndScheduledTo", payload.endScheduledTo);
+      }
 
       if (payload.thumbnailUploadRequest) {
-        formData.append("thumbnailUploadRequest", {
+        formData.append("ThumbnailUploadRequest", {
           uri: payload.thumbnailUploadRequest.uri,
           type: payload.thumbnailUploadRequest.type || "image/jpeg",
           name: payload.thumbnailUploadRequest.name || "event-image.jpg",
         } as any);
       }
 
-      console.log("FormData being sent:");
-      for (let pair of formData.entries()) {
-        console.log(pair[0], pair[1]);
+      // ── Dev logging ──────────────────────────────────────────────────────────
+      if (__DEV__) {
+        console.log("[useEventsCreate] Sending FormData:");
+        for (const [key, value] of (formData as any)._parts ?? []) {
+          console.log(" ", key, "→", value);
+        }
       }
 
       const response = await axios.post(API_URL, formData, {
@@ -79,17 +99,11 @@ export function useCreateEvent(token: string | null) {
         },
       });
 
-      console.log("Create event response:", response.data);
       return response.data;
     } catch (err: any) {
-      console.error(
-        "Axios create event error:",
-        err.response?.data || err.message,
-      );
-      console.error("Error status:", err.response?.status);
-      console.error("Error headers:", err.response?.headers);
-
-      setError(err.response?.data ?? err.message);
+      const detail = err.response?.data ?? err.message;
+      console.error("[useEventsCreate] Error:", detail);
+      setError(detail);
       throw err;
     } finally {
       setLoading(false);

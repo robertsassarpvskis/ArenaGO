@@ -12,7 +12,6 @@ import {
   getDefaultDuration,
   roundToNearest5Minutes,
   TimeSlot,
-  URBAN_COLORS,
 } from "@/utils/dateTimeHelpers";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -28,6 +27,25 @@ import {
 import { DateOptionChip } from "./DateOptionChip";
 import { DurationPicker } from "./DurationPicker";
 import { TimeSlotChip } from "./TimeSlotChip";
+
+// ─── Local tokens ─────────────────────────────────────────────────────────────
+const C = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F4F4F4",
+  border: "#EBEBEB",
+  borderMid: "#D8D8D8",
+  text: "#111111",
+  textSub: "#555555",
+  textMuted: "#AAAAAA",
+  ink: "#1A1A1A",
+  coral: "#FF6B58",
+  coralLight: "rgba(255,107,88,0.08)",
+  coralBorder: "rgba(255,107,88,0.22)",
+  success: "#1A9E6A",
+  successLight: "rgba(26,158,106,0.08)",
+  successBorder: "rgba(26,158,106,0.22)",
+} as const;
 
 interface QuickDateTimeProps {
   categoryLabel?: string;
@@ -63,10 +81,7 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
         dateOption === "CUSTOM" ? customDate : undefined,
       );
       setTimeSlots(slots);
-
-      if (!selectedTime && slots.length > 0) {
-        handleTimeSlotSelect(slots[0]);
-      }
+      if (!selectedTime && slots.length > 0) handleTimeSlotSelect(slots[0]);
     }
   }, [dateOption, customDate]);
 
@@ -84,11 +99,9 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
 
   const handleDateOptionSelect = (option: DateOption) => {
     setDateOption(option);
-
     if (option === "NOW") {
       const now = new Date();
-      const roundedNow = roundToNearest5Minutes(now);
-      setSelectedTime(roundedNow);
+      setSelectedTime(roundToNearest5Minutes(now));
       setDuration(60);
     } else if (option === "CUSTOM") {
       setShowCustomDatePicker(true);
@@ -98,16 +111,11 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
   };
 
   const handleTimeSlotSelect = (slot: TimeSlot) => {
-    if (!slot.disabled) {
-      setSelectedTime(slot.value);
-    }
+    if (!slot.disabled) setSelectedTime(slot.value);
   };
 
   const handleCustomDateChange = (event: any, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowCustomDatePicker(false);
-    }
-
+    if (Platform.OS === "android") setShowCustomDatePicker(false);
     if (date) {
       setCustomDate(date);
       if (Platform.OS === "android") {
@@ -115,10 +123,6 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
         setTimeSlots(slots);
       }
     }
-  };
-
-  const handleDurationChange = (newDuration: number) => {
-    setDuration(newDuration);
   };
 
   const endDateTime = selectedTime
@@ -131,51 +135,40 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Section Header with Orange Icon */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.headerIconOrange}>
-          <Ionicons name="calendar" size={20} color="#fff" />
-        </View>
-        <Text style={styles.question}>When is your event?</Text>
+      {/* ── Date options ── */}
+      <Text style={styles.sectionLabel}>DATE</Text>
+      <View style={styles.chipsWrap}>
+        <DateOptionChip
+          label="NOW"
+          selected={dateOption === "NOW"}
+          onPress={() => handleDateOptionSelect("NOW")}
+          icon="flash"
+        />
+        <DateOptionChip
+          label={getDateOptionLabel("TODAY", currentTime)}
+          selected={dateOption === "TODAY"}
+          onPress={() => handleDateOptionSelect("TODAY")}
+        />
+        <DateOptionChip
+          label={getDateOptionLabel("TONIGHT", currentTime)}
+          selected={dateOption === "TONIGHT"}
+          onPress={() => handleDateOptionSelect("TONIGHT")}
+        />
+        <DateOptionChip
+          label="Tomorrow"
+          selected={dateOption === "TOMORROW"}
+          onPress={() => handleDateOptionSelect("TOMORROW")}
+        />
+        <DateOptionChip
+          label="Pick date"
+          selected={dateOption === "CUSTOM"}
+          onPress={() => handleDateOptionSelect("CUSTOM")}
+          outlined
+          icon="calendar-outline"
+        />
       </View>
 
-      {/* Date Selection - Non-scrollable Wrap */}
-      <View style={styles.dateOptionsContainer}>
-        <View style={styles.dateOptionsRow}>
-          <DateOptionChip
-            label="NOW"
-            selected={dateOption === "NOW"}
-            onPress={() => handleDateOptionSelect("NOW")}
-            icon="flash"
-          />
-          <DateOptionChip
-            label={getDateOptionLabel("TODAY", currentTime)}
-            selected={dateOption === "TODAY"}
-            onPress={() => handleDateOptionSelect("TODAY")}
-          />
-          <DateOptionChip
-            label={getDateOptionLabel("TONIGHT", currentTime)}
-            selected={dateOption === "TONIGHT"}
-            onPress={() => handleDateOptionSelect("TONIGHT")}
-          />
-        </View>
-        <View style={styles.dateOptionsRow}>
-          <DateOptionChip
-            label="Tomorrow"
-            selected={dateOption === "TOMORROW"}
-            onPress={() => handleDateOptionSelect("TOMORROW")}
-          />
-          <DateOptionChip
-            label="Pick Date"
-            selected={dateOption === "CUSTOM"}
-            onPress={() => handleDateOptionSelect("CUSTOM")}
-            outlined
-            icon="calendar-outline"
-          />
-        </View>
-      </View>
-
-      {/* Custom Date Picker */}
+      {/* Custom date picker */}
       {showCustomDatePicker && (
         <DateTimePicker
           value={customDate}
@@ -187,19 +180,13 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
         />
       )}
 
-      {/* Time Selection */}
+      {/* ── Time slots ── */}
       {dateOption && dateOption !== "NOW" && timeSlots.length > 0 && (
         <View style={styles.timeSection}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.headerIconOrange}>
-              <Ionicons name="time" size={20} color="#fff" />
-            </View>
-            <Text style={styles.question}>What time?</Text>
-          </View>
+          <Text style={styles.sectionLabel}>TIME</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.timeSlots}
             contentContainerStyle={styles.timeSlotsContent}
           >
             {timeSlots.map((slot, idx) => (
@@ -216,54 +203,38 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
         </View>
       )}
 
-      {/* Duration & End Time Display */}
+      {/* ── Duration row ── */}
       {selectedTime && (
         <View style={styles.durationSection}>
+          {/* Duration trigger */}
           <TouchableOpacity
             onPress={() => setShowDurationPicker(true)}
-            style={styles.durationButton}
-            activeOpacity={0.7}
+            style={styles.durationRow}
+            activeOpacity={0.75}
           >
-            <View style={styles.durationLeft}>
-              <View style={styles.durationIconContainerOrange}>
-                <Ionicons name="timer" size={22} color="#fff" />
-              </View>
-              <View>
-                <Text style={styles.durationLabel}>Duration</Text>
-                <Text style={styles.durationValue}>
-                  {formatDuration(duration)}
-                </Text>
-              </View>
+            <View style={styles.durationInfo}>
+              <Text style={styles.durationKey}>DURATION</Text>
+              <Text style={styles.durationValue}>
+                {formatDuration(duration)}
+              </Text>
             </View>
-            <View style={styles.changeButton}>
-              <Text style={styles.changeText}>EDIT</Text>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={URBAN_COLORS.primary}
-              />
+            <View style={styles.editPill}>
+              <Text style={styles.editPillText}>EDIT</Text>
             </View>
           </TouchableOpacity>
 
+          {/* End time */}
           {showEndTime && (
-            <View style={styles.endTimeInfo}>
-              <View style={styles.endTimeRow}>
-                <Ionicons name="flag" size={16} color={URBAN_COLORS.primary} />
-                <Text style={styles.endTimeLabel}>Ends at</Text>
-                <Text style={styles.endTimeText}>
-                  {formatEndTime(selectedTime, endDateTime)}
-                </Text>
-              </View>
+            <View style={styles.endTimeRow}>
+              <View style={styles.endTimeDot} />
+              <Text style={styles.endTimeLabel}>Ends at </Text>
+              <Text style={styles.endTimeValue}>
+                {formatEndTime(selectedTime, endDateTime)}
+              </Text>
               {doesCrossMidnight && (
-                <View style={styles.midnightWarning}>
-                  <Ionicons
-                    name="moon"
-                    size={14}
-                    color={URBAN_COLORS.primary}
-                  />
-                  <Text style={styles.midnightWarningText}>
-                    Continues to next day
-                  </Text>
+                <View style={styles.midnightTag}>
+                  <Ionicons name="moon-outline" size={10} color={C.textMuted} />
+                  <Text style={styles.midnightTagText}>next day</Text>
                 </View>
               )}
             </View>
@@ -271,11 +242,11 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
         </View>
       )}
 
-      {/* Duration Picker Modal */}
+      {/* Duration picker modal */}
       <DurationPicker
         visible={showDurationPicker}
         currentDuration={duration}
-        onSelect={handleDurationChange}
+        onSelect={(d) => setDuration(d)}
         onClose={() => setShowDurationPicker(false)}
       />
     </View>
@@ -284,156 +255,123 @@ export const QuickDateTime: React.FC<QuickDateTimeProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 16,
+    marginTop: 4,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-    paddingHorizontal: 4,
+
+  // ── Section label — urban stencil style
+  sectionLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 2.5,
+    color: C.textMuted,
+    textTransform: "uppercase",
+    marginBottom: 10,
   },
-  headerIconOrange: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: URBAN_COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-    shadowColor: URBAN_COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  question: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: URBAN_COLORS.textPrimary,
-    letterSpacing: 0.1,
-  },
-  dateOptionsContainer: {
-    paddingBottom: 4,
-  },
-  dateOptionsRow: {
+
+  // ── Date chips
+  chipsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: 8,
+    marginBottom: 4,
   },
+
+  // ── Time slots
   timeSection: {
-    marginTop: 24,
-  },
-  timeSlots: {
-    marginTop: 8,
+    marginTop: 20,
   },
   timeSlotsContent: {
-    paddingRight: 16,
+    paddingRight: 8,
   },
+
+  // ── Duration section
   durationSection: {
     marginTop: 20,
-    padding: 18,
-    backgroundColor: URBAN_COLORS.cardBg,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: URBAN_COLORS.secondary,
-    shadowColor: URBAN_COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    overflow: "hidden",
   },
-  durationButton: {
+  durationRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  durationLeft: {
-    flexDirection: "row",
-    alignItems: "center",
+  durationInfo: {
+    gap: 2,
   },
-  durationIconContainerOrange: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: URBAN_COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
-    shadowColor: URBAN_COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  durationLabel: {
-    fontSize: 12,
-    color: URBAN_COLORS.textSecondary,
-    fontWeight: "600",
-    letterSpacing: 0.5,
+  durationKey: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: C.textMuted,
     textTransform: "uppercase",
-    marginBottom: 2,
   },
   durationValue: {
     fontSize: 18,
     fontWeight: "800",
-    color: URBAN_COLORS.textPrimary,
-    letterSpacing: -0.3,
+    color: C.text,
+    letterSpacing: -0.4,
+    marginTop: 2,
   },
-  changeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: "#FFF1F0",
-    borderRadius: 10,
+  editPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: C.surfaceAlt,
     borderWidth: 1.5,
-    borderColor: URBAN_COLORS.secondary,
+    borderColor: C.border,
   },
-  changeText: {
-    fontSize: 13,
-    color: URBAN_COLORS.primary,
+  editPillText: {
+    fontSize: 11,
     fontWeight: "800",
-    marginRight: 4,
-    letterSpacing: 0.5,
+    color: C.textSub,
+    letterSpacing: 1,
   },
-  endTimeInfo: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 2,
-    borderTopColor: "#F3F4F6",
-    borderStyle: "dashed",
-  },
+
+  // ── End time row
   endTimeRow: {
     flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    gap: 6,
+  },
+  endTimeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.success,
   },
   endTimeLabel: {
     fontSize: 13,
-    color: URBAN_COLORS.textSecondary,
-    marginLeft: 8,
-    marginRight: 6,
-    fontWeight: "600",
+    fontWeight: "400",
+    color: C.textMuted,
   },
-  endTimeText: {
-    fontSize: 16,
-    color: URBAN_COLORS.textPrimary,
+  endTimeValue: {
+    fontSize: 13,
     fontWeight: "700",
+    color: C.text,
+    flex: 1,
   },
-  midnightWarning: {
+  midnightTag: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "#FFF1F0",
-    borderRadius: 10,
-    borderLeftWidth: 3,
-    borderLeftColor: URBAN_COLORS.primary,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  midnightWarningText: {
-    fontSize: 13,
-    color: URBAN_COLORS.primary,
-    marginLeft: 8,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+  midnightTagText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: C.textMuted,
   },
 });

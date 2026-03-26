@@ -1,6 +1,6 @@
 // components/ui/datetime/DurationPicker.tsx
 
-import { DURATION_OPTIONS, URBAN_COLORS } from "@/utils/dateTimeHelpers";
+import { DURATION_OPTIONS } from "@/utils/dateTimeHelpers";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
@@ -11,6 +11,22 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const C = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F4F4F4",
+  border: "#EBEBEB",
+  borderMid: "#D8D8D8",
+  text: "#111111",
+  textSub: "#555555",
+  textMuted: "#AAAAAA",
+  ink: "#1A1A1A",
+  coral: "#FF6B58",
+  coralLight: "rgba(255,107,88,0.08)",
+  success: "#1A9E6A",
+  overlay: "rgba(17,17,17,0.5)",
+} as const;
 
 interface DurationPickerProps {
   visible: boolean;
@@ -42,64 +58,58 @@ export const DurationPicker: React.FC<DurationPickerProps> = ({
         activeOpacity={1}
         onPress={onClose}
       >
-        <View style={styles.container}>
+        <View style={styles.sheet}>
           <TouchableOpacity activeOpacity={1}>
-            {/* Drag Handle */}
+            {/* Drag handle */}
             <View style={styles.dragHandle} />
 
             {/* Header */}
             <View style={styles.header}>
-              <View style={styles.headerLeft}>
-                <View style={styles.iconContainer}>
-                  <Ionicons name="timer" size={24} color="#fff" />
-                </View>
-                <Text style={styles.title}>Event Duration</Text>
+              <View>
+                {/* Urban stencil label */}
+                <Text style={styles.headerEyebrow}>DURATION</Text>
+                <Text style={styles.headerTitle}>How long is it?</Text>
               </View>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons
-                  name="close"
-                  size={28}
-                  color={URBAN_COLORS.textSecondary}
-                />
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={C.textSub} />
               </TouchableOpacity>
             </View>
 
-            {/* Options List */}
+            {/* Options */}
             <ScrollView
-              style={styles.optionsList}
+              style={styles.list}
               showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 28 }}
             >
-              {DURATION_OPTIONS.map((option) => {
+              {DURATION_OPTIONS.map((option, idx) => {
                 const isSelected = currentDuration === option.value;
                 return (
                   <TouchableOpacity
                     key={option.value}
-                    style={[styles.option, isSelected && styles.optionSelected]}
+                    style={[
+                      styles.option,
+                      idx < DURATION_OPTIONS.length - 1 && styles.optionBorder,
+                      isSelected && styles.optionSelected,
+                    ]}
                     onPress={() => handleSelect(option.value)}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.optionContent}>
-                      <View
-                        style={[
-                          styles.optionRadio,
-                          isSelected && styles.optionRadioSelected,
-                        ]}
-                      >
-                        {isSelected && <View style={styles.optionRadioDot} />}
-                      </View>
-                      <Text
-                        style={[
-                          styles.optionText,
-                          isSelected && styles.optionTextSelected,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <View style={styles.selectedBadge}>
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                      </View>
+                    <Text
+                      style={[
+                        styles.optionText,
+                        isSelected && styles.optionTextSelected,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {isSelected ? (
+                      <Ionicons name="checkmark" size={16} color={C.success} />
+                    ) : (
+                      <View style={styles.optionRadio} />
                     )}
                   </TouchableOpacity>
                 );
@@ -115,132 +125,90 @@ export const DurationPicker: React.FC<DurationPickerProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(31, 41, 55, 0.75)",
+    backgroundColor: C.overlay,
     justifyContent: "flex-end",
   },
-  container: {
-    backgroundColor: URBAN_COLORS.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: "70%",
-    borderTopWidth: 3,
-    borderTopColor: URBAN_COLORS.darkGray,
+  sheet: {
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "65%",
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
   dragHandle: {
-    width: 40,
-    height: 5,
-    backgroundColor: "#D1D5DB",
-    borderRadius: 3,
+    width: 36,
+    height: 3,
+    backgroundColor: C.borderMid,
+    borderRadius: 2,
     alignSelf: "center",
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 10,
+    marginBottom: 4,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
+  headerEyebrow: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 2.5,
+    color: C.textMuted,
+    textTransform: "uppercase",
+    marginBottom: 3,
   },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: URBAN_COLORS.primary,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: C.text,
+    letterSpacing: -0.4,
+  },
+  closeBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: URBAN_COLORS.primary,
-    shadowColor: URBAN_COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    marginTop: 2,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: URBAN_COLORS.textPrimary,
-    letterSpacing: -0.3,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  optionsList: {
-    maxHeight: 400,
+  list: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 8,
   },
   option: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 18,
-    marginBottom: 10,
-    backgroundColor: URBAN_COLORS.cardBg,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: "#D1D5DB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingVertical: 16,
+  },
+  optionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
   },
   optionSelected: {
-    backgroundColor: URBAN_COLORS.darkGray,
-    borderColor: URBAN_COLORS.darkGray,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  optionContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  optionRadio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#9CA3AF",
-    marginRight: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  optionRadioSelected: {
-    borderColor: "#fff",
-    borderWidth: 2,
-  },
-  optionRadioDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#fff",
+    // no background fill — just text + check color change
   },
   optionText: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: URBAN_COLORS.textPrimary,
-    letterSpacing: 0.1,
+    fontSize: 16,
+    fontWeight: "500",
+    color: C.textSub,
   },
   optionTextSelected: {
     fontWeight: "700",
-    color: "#fff",
+    color: C.text,
   },
-  selectedBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: URBAN_COLORS.accentGreen,
-    justifyContent: "center",
-    alignItems: "center",
+  optionRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: C.borderMid,
   },
 });

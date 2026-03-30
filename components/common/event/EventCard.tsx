@@ -266,7 +266,7 @@ function MetaItem({
     <View style={me.row}>
       <Ionicons
         name={icon as any}
-        size={11}
+        size={16}
         color={color}
         style={{ marginTop: 0.5 }}
       />
@@ -354,7 +354,7 @@ function CardB(p: SharedCardProps) {
   return (
     <View style={[s.card, vb.card]}>
       <Text style={vb.ghost} aria-hidden>
-        {p.attendees > 0 ? String(p.attendees) : "0"}
+        {p.attendees > 0 ? String(p.attendees) : "0"}km
       </Text>
       <View style={vb.topRow}>
         <CategoryPill label={p.category} accent={p.accent} surface="light" />
@@ -818,13 +818,13 @@ const vb = StyleSheet.create({
   card: { padding: 16 },
   ghost: {
     position: "absolute",
-    right: 0,
-    bottom: -8,
-    fontSize: 110,
+    right: 20,
+    bottom: 40,
+    fontSize: 64,
     fontWeight: "900",
     fontStyle: "italic",
     color: "#0D0D0D",
-    opacity: 0.04,
+    opacity: 0.15,
     letterSpacing: -6,
     lineHeight: 110,
     includeFontPadding: false,

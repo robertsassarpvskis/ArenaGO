@@ -5,7 +5,7 @@
 // interactive — the user can pan and zoom. The camera is fitted to show the
 // full route on mount.
 
-import { openMaps } from "@/app/modal/EventModalBase";
+import { openMaps } from "@/components/layout/EventModalBase";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";

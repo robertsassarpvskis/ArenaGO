@@ -45,7 +45,6 @@ import {
   Text,
   View,
 } from "react-native";
-import UserProfileModal from "../modal/UserProfileModal";
 import {
   Avatar,
   BaseEventModalProps,
@@ -58,7 +57,8 @@ import {
   SectionLabel,
   Tag,
   sharedS,
-} from "./EventModalBase";
+} from "../../components/layout/EventModalBase";
+import UserProfileModal from "../modal/UserProfileModal";
 import UserListModal, { UserListParticipant } from "./UserListModal";
 
 // ─── Dismiss constants ────────────────────────────────────────────────────────

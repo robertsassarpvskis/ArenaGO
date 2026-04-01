@@ -29,7 +29,6 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
-import UserProfileModal from "../modal/UserProfileModal";
 import {
   ACCENT_BG,
   AMBER_BG,
@@ -49,7 +48,8 @@ import {
   RED_BG,
   SCREEN_HEIGHT,
   sharedS,
-} from "./EventModalBase";
+} from "../../components/layout/EventModalBase";
+import UserProfileModal from "../modal/UserProfileModal";
 import UserListModal from "./UserListModal";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -973,8 +973,6 @@ export default function AuthorEventModal({
                 ) : (
                   /* ══════ VIEW MODE ══════ */
                   <>
-                 
-
                     {/* Title block */}
                     <View
                       style={[
@@ -1015,9 +1013,9 @@ export default function AuthorEventModal({
                         <Text style={sharedS.timeFormatText}>{timeFormat}</Text>
                       </View>
                     </View>
-                                        <Divider />
+                    <Divider />
 
-                       {/* ── Stats bar (author-only) ── */}
+                    {/* ── Stats bar (author-only) ── */}
                     <View style={AS.statsBar}>
                       <View style={AS.statItem}>
                         <Text style={AS.statValue}>{event!.attendees}</Text>

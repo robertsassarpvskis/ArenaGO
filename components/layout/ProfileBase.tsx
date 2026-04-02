@@ -1,36 +1,36 @@
 // components/layout/ProfileBase.tsx
 //
-// 2026 redesign v2 — editorial, modern, immersive.
+// 2026 redesign v7 — street / editorial / flat.
 //
-// Hero is position:absolute (pinned behind scroll).
-// The ScrollView content starts with paddingTop = HERO_H so the body
-// sits below the photo initially, then slides UP over it as the user scrolls.
-// Overscroll-up reveals more of the pinned photo — never white.
-//
-// Font: Playfair Display (display) + DM Sans (body) — load via expo-google-fonts
-// or embed in your asset pipeline:
-//   @expo-google-fonts/playfair-display
-//   @expo-google-fonts/dm-sans
+// Design brief:
+//   • Matches Discover page: white bg, bold ink type, coral accent, clean cards
+//   • Hero bleeds DIRECTLY into flat white body — zero rounded card, zero drag handle
+//   • Scroll nav: dark-glass buttons over photo → clean white bar after (NO dark overlay)
+//   • Activity cards: Discover event-card language (cat pill + bold name + fill bar)
+//   • Interest chips: flex-wrap, outlined, street style
+//   • Zero glass-morphism, zero heavy shadows, zero dark scrolling artifacts
 //
 // Used by:
-//   • MyProfileScreen   (mode="own")  — Edit + Share, no Follow/Message
-//   • UserProfileScreen (mode="other") — Follow + Message, no Edit
+//   • MyProfileScreen   (mode="own")   — Edit + Share, Sign Out footer
+//   • UserProfileScreen (mode="other") — Follow + Message
 
 import {
   ArrowLeft,
+  ArrowRight,
   Edit3,
   MapPin,
   MessageCircle,
   MoreHorizontal,
   Share2,
-  Zap,
+  Users,
 } from "lucide-react-native";
-import React, { ReactNode, useRef } from "react";
+import React, { ReactNode, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
   Image,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -42,57 +42,87 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 export const C = {
-  // Backgrounds
   bg: "#FAFAFA",
-  surface: "#FFFFFF",
-  surfaceAlt: "#F1EFE8", // gray-50 from palette
-  surfaceWarm: "#FAECE7", // coral-50 — warm accent surface
-  border: "rgba(0,0,0,0.07)",
-  borderMid: "rgba(0,0,0,0.12)",
-
-  // Text
+  surface: "#F5F3EE",
+  surfaceAlt: "#ECEAE4",
+  border: "#E8E6E0",
+  borderMid: "#D4D2CC",
   text: "#111111",
-  textSub: "#5F5E5A", // gray-600
-  textMuted: "#888780", // gray-400
-  textOnDark: "#FFFFFF",
-
-  // Accent
-  coral: "#D85A30", // coral-400 — primary CTA
-  coralLight: "#F0997B", // coral-200
-  coralSurface: "#FAECE7", // coral-50
-
-  teal: "#1D9E75", // teal-400 — secondary accent
-  tealSurface: "#E1F5EE", // teal-50
-
-  // Structural
+  textSub: "#555555",
+  textMuted: "#AAAAAA",
+  coral: "#FF6B58",
   ink: "#111111",
-  heroBg: "#0D0D0D",
+  heroBg: "#1A1A1A",
 } as const;
 
-// ─── Language → flag map ──────────────────────────────────────────────────────
+// ─── Interest icon map ────────────────────────────────────────────────────────
+
+const INTEREST_ICONS: Record<string, string> = {
+  basketball: "🏀", yoga: "🧘", running: "🏃", tennis: "🎾",
+  soccer: "⚽", football: "🏈", swimming: "🏊", cycling: "🚴",
+  hiking: "🥾", photography: "📸", cooking: "👨‍🍳", music: "🎵",
+  reading: "📚", gaming: "🎮", travel: "✈️", fitness: "💪",
+  climbing: "🧗", skiing: "⛷️", surfing: "🏄", volleyball: "🏐",
+  boxing: "🥊", dance: "💃", art: "🎨", coffee: "☕",
+  wine: "🍷", chess: "♟️", badminton: "🏸", golf: "⛳",
+  pilates: "🤸", martial: "🥋", rugby: "🏉", archery: "🏹",
+};
+
+// ─── Social config ────────────────────────────────────────────────────────────
+
+const SOCIAL_CFG: Record<string, { label: string; bg: string; color: string }> = {
+  instagram: { label: "IG",  bg: "#E1306C", color: "#fff" },
+  twitter:   { label: "𝕏",   bg: "#000000", color: "#fff" },
+  strava:    { label: "ST",  bg: "#FC4C02", color: "#fff" },
+  youtube:   { label: "YT",  bg: "#FF0000", color: "#fff" },
+  tiktok:    { label: "TK",  bg: "#010101", color: "#fff" },
+  linkedin:  { label: "IN",  bg: "#0A66C2", color: "#fff" },
+  spotify:   { label: "SP",  bg: "#1DB954", color: "#fff" },
+};
+
+// ─── Category colors + labels ─────────────────────────────────────────────────
+
+const CAT_COLOR: Record<string, string> = {
+  sport:  "#FF6B58",
+  social: "#6B5BF5",
+  art:    "#C084FC",
+  food:   "#F59E0B",
+  nature: "#22C55E",
+  music:  "#EC4899",
+};
+
+const CAT_LABEL: Record<string, string> = {
+  sport:  "SPORT",
+  social: "SOCIAL",
+  art:    "ART",
+  food:   "FOOD",
+  nature: "NATURE",
+  music:  "MUSIC",
+};
+
+// ─── Language → flag ──────────────────────────────────────────────────────────
 
 const LANG_FLAG: Record<string, string> = {
-  EN: "🇬🇧",
-  LV: "🇱🇻",
-  RU: "🇷🇺",
-  DE: "🇩🇪",
-  FR: "🇫🇷",
-  ES: "🇪🇸",
-  IT: "🇮🇹",
-  PL: "🇵🇱",
-  LT: "🇱🇹",
-  EE: "🇪🇪",
-  FI: "🇫🇮",
-  SV: "🇸🇪",
-  NL: "🇳🇱",
-  PT: "🇵🇹",
-  ZH: "🇨🇳",
-  JA: "🇯🇵",
-  KO: "🇰🇷",
-  AR: "🇸🇦",
+  EN: "🇬🇧", LV: "🇱🇻", RU: "🇷🇺", DE: "🇩🇪",
+  FR: "🇫🇷", ES: "🇪🇸", IT: "🇮🇹", PL: "🇵🇱",
+  LT: "🇱🇹", EE: "🇪🇪", FI: "🇫🇮", SV: "🇸🇪",
+  NL: "🇳🇱", PT: "🇵🇹", ZH: "🇨🇳", JA: "🇯🇵",
+  KO: "🇰🇷", AR: "🇸🇦",
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface SocialLink {
+  platform: "instagram" | "twitter" | "strava" | "youtube" | "tiktok" | "linkedin" | "spotify";
+  handle: string;
+  url?: string;
+}
+
+export interface Interest {
+  id: string;
+  label: string;
+  icon?: string;
+}
 
 export interface ProfileEvent {
   id: number;
@@ -101,7 +131,9 @@ export interface ProfileEvent {
   date: string;
   time: string;
   participants: number;
-  photoUrl?: string;
+  maxParticipants?: number;
+  imageUrl?: string;
+  category?: keyof typeof CAT_COLOR;
 }
 
 export interface ProfileBaseProps {
@@ -110,9 +142,14 @@ export interface ProfileBaseProps {
   lastName: string;
   username: string;
   photoUrl?: string;
+  photos?: string[];
   bio?: string;
+  interests?: Interest[];
+  socialLinks?: SocialLink[];
   preferredLanguages?: string[];
   locationLabel?: string;
+  memberSince?: string;
+  responseRate?: number;
   followingCount?: number;
   followerCount?: number;
   participatedEventsCount?: number;
@@ -124,6 +161,7 @@ export interface ProfileBaseProps {
   onClosePress?: () => void;
   onMorePress?: () => void;
   onSeeAllActivityPress?: () => void;
+  onAddPhotoPress?: () => void;
   recentEvents?: ProfileEvent[];
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -133,9 +171,8 @@ export interface ProfileBaseProps {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const { width: W, height: SCREEN_H } = Dimensions.get("window");
-
-const HERO_H = Math.round(W * 1.15);
-const BODY_TOP = HERO_H;
+const HERO_H = Math.round(W * 1.05);
+const SIDE = 20;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -146,41 +183,69 @@ function fmt(n?: number): string {
   return String(n);
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+function interestIcon(item: Interest): string {
+  if (item.icon) return item.icon;
+  return INTEREST_ICONS[item.id.toLowerCase()]
+    ?? INTEREST_ICONS[item.label.toLowerCase()]
+    ?? "⚡";
+}
 
-function StatItem({
-  value,
-  label,
-  accent,
-}: {
-  value: string;
-  label: string;
-  accent?: boolean;
-}) {
+// ─── Atoms ────────────────────────────────────────────────────────────────────
+
+const Label = ({ t }: { t: string }) => <Text style={s.label}>{t}</Text>;
+const Sep   = () => <View style={s.sep} />;
+
+// ─── Interest chips (flex-wrap, street style) ─────────────────────────────────
+
+function InterestChips({ interests }: { interests: Interest[] }) {
   return (
-    <View style={s.statItem}>
-      <Text style={[s.statValue, accent && { color: C.coral }]}>{value}</Text>
-      <Text style={s.statLabel}>{label}</Text>
+    <View style={s.chipsWrap}>
+      {interests.map((item) => (
+        <View key={item.id} style={s.chip}>
+          <Text style={s.chipEmoji}>{interestIcon(item)}</Text>
+          <Text style={s.chipLabel}>{item.label.toUpperCase()}</Text>
+        </View>
+      ))}
     </View>
   );
 }
 
-function EventRow({ ev, last }: { ev: ProfileEvent; last?: boolean }) {
+// ─── Activity card — Discover event card language ─────────────────────────────
+
+function ActivityCard({ ev, isFirst }: { ev: ProfileEvent; isFirst?: boolean }) {
+  const color    = ev.category ? (CAT_COLOR[ev.category] ?? C.coral) : C.coral;
+  const catLabel = ev.category ? (CAT_LABEL[ev.category] ?? ev.category.toUpperCase()) : "EVENT";
+  const fill     = ev.maxParticipants
+    ? Math.min(ev.participants / ev.maxParticipants, 1)
+    : null;
+
   return (
-    <View style={[s.eventRow, last && { borderBottomWidth: 0 }]}>
-      <View style={s.eventIconWrap}>
-        <Text style={s.eventIconText}>{ev.icon}</Text>
+    <View style={s.actCard}>
+      <View style={s.actTop}>
+        <View style={[s.catPill, { backgroundColor: `${color}14` }]}>
+          <View style={[s.catDot, { backgroundColor: color }]} />
+          <Text style={[s.catPillText, { color }]}>{catLabel}</Text>
+        </View>
+        {isFirst && (
+          <View style={s.latestPill}>
+            <Text style={s.latestText}>LATEST</Text>
+          </View>
+        )}
+        <Text style={s.actDate}>{ev.date}</Text>
       </View>
-      <View style={s.eventInfo}>
-        <Text style={s.eventName} numberOfLines={1}>
-          {ev.name}
-        </Text>
-        <Text style={s.eventMeta}>
-          {ev.time} · {ev.participants} joined
-        </Text>
-      </View>
-      <View style={s.eventDateWrap}>
-        <Text style={s.eventDate}>{ev.date}</Text>
+
+      <Text style={s.actName} numberOfLines={1}>{ev.name.toUpperCase()}</Text>
+
+      <View style={s.actBottom}>
+        <Text style={s.actMeta}>{ev.time}  ·  {ev.participants} GOING</Text>
+        {fill !== null && (
+          <View style={s.fillTrack}>
+            <View style={[s.fillFill, { width: `${fill * 100}%` as any, backgroundColor: color }]} />
+          </View>
+        )}
+        <View style={[s.arrowBtn, { backgroundColor: color }]}>
+          <ArrowRight size={11} color="#fff" strokeWidth={2.5} />
+        </View>
       </View>
     </View>
   );
@@ -194,9 +259,14 @@ export default function ProfileBase({
   lastName,
   username,
   photoUrl,
+  photos: photosProp,
   bio,
+  interests = [],
+  socialLinks = [],
   preferredLanguages = [],
   locationLabel,
+  memberSince,
+  responseRate,
   followingCount,
   followerCount,
   participatedEventsCount,
@@ -208,102 +278,135 @@ export default function ProfileBase({
   onClosePress,
   onMorePress,
   onSeeAllActivityPress,
+  onAddPhotoPress,
   recentEvents = [],
   refreshing = false,
   onRefresh,
   footer,
 }: ProfileBaseProps) {
-  const insets = useSafeAreaInsets();
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const insets   = useSafeAreaInsets();
+  const scrollY  = useRef(new Animated.Value(0)).current;
+  const [photoIdx, setPhotoIdx] = useState(0);
 
-  // ── Parallax ──────────────────────────────────────────────────────────────
-  const heroTranslate = scrollY.interpolate({
+  const photos     = photosProp?.length ? photosProp : photoUrl ? [photoUrl] : [];
+  const multiPhoto = photos.length > 1;
+
+  // ── Scroll-driven values ──────────────────────────────────────────────────
+
+  const heroY = scrollY.interpolate({
     inputRange: [0, HERO_H],
-    outputRange: [0, -HERO_H * 0.35],
+    outputRange: [0, -HERO_H * 0.26],
     extrapolate: "clamp",
   });
 
-  // ── Top-bar fade ──────────────────────────────────────────────────────────
-  const topBarBg = scrollY.interpolate({
-    inputRange: [HERO_H - 90, HERO_H - 10],
-    outputRange: ["rgba(13,13,13,0)", "rgba(13,13,13,0.96)"],
-    extrapolate: "clamp",
-  });
-
-  // ── Identity fades as body rises ──────────────────────────────────────────
-  const identityOpacity = scrollY.interpolate({
-    inputRange: [0, HERO_H * 0.3],
+  // Dark buttons over photo fade OUT
+  const darkNavOpacity = scrollY.interpolate({
+    inputRange: [HERO_H - 80, HERO_H - 10],
     outputRange: [1, 0],
     extrapolate: "clamp",
   });
 
-  return (
-    <View style={[s.root, { backgroundColor: C.heroBg }]}>
-      <StatusBar
-        barStyle="light-content"
-        translucent
-        backgroundColor="transparent"
-      />
+  // White bar fades IN — clean, NO dark overlay ever
+  const whiteBarOpacity = scrollY.interpolate({
+    inputRange: [HERO_H - 80, HERO_H],
+    outputRange: [0, 1],
+    extrapolate: "clamp",
+  });
 
-      {/* ══════════════════════════════════════════════════════════════════
-          HERO — absolute, pinned behind scroll
-      ════════════════════════════════════════════════════════════════════ */}
+  // Identity fades with hero
+  const identityOpacity = scrollY.interpolate({
+    inputRange: [0, HERO_H * 0.28],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <Animated.View
-        style={[s.heroAbs, { transform: [{ translateY: heroTranslate }] }]}
-        pointerEvents="none"
+        style={[s.heroAbs, { transform: [{ translateY: heroY }] }]}
+        pointerEvents="box-none"
       >
-        {photoUrl ? (
-          <Image
-            source={{ uri: photoUrl }}
-            style={s.heroImg}
-            resizeMode="cover"
-          />
+        {photos.length > 0 ? (
+          <ScrollView
+            horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            style={{ width: W, height: HERO_H }}
+            scrollEnabled={multiPhoto}
+            onMomentumScrollEnd={(e) =>
+              setPhotoIdx(Math.round(e.nativeEvent.contentOffset.x / W))
+            }
+          >
+            {photos.map((uri, i) => (
+              <View key={i} style={{ width: W, height: HERO_H }}>
+                <Image source={{ uri }} style={s.heroImg} resizeMode="cover" />
+              </View>
+            ))}
+          </ScrollView>
         ) : (
           <View style={s.heroFallback}>
-            <Text style={s.heroInitials}>
-              {firstName[0]}
-              {lastName[0]}
-            </Text>
+            <Text style={s.heroFallbackText}>{firstName[0]}{lastName[0]}</Text>
           </View>
         )}
 
-        {/* Multi-stop scrim: clear top → dark bottom */}
-        <View style={s.heroScrim} />
-        {/*
-         * Prefer expo-linear-gradient for smooth gradients:
-         * <LinearGradient
-         *   colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.82)']}
-         *   locations={[0, 0.45, 1]}
-         *   style={StyleSheet.absoluteFillObject}
-         * />
-         */}
+        {/* Bottom-only scrim — swap for LinearGradient for sharper directional fade */}
+        <View style={s.scrim} pointerEvents="none" />
 
-        {/* Identity block — fades as body scrolls up */}
-        <Animated.View style={[s.heroBottom, { opacity: identityOpacity }]}>
+        {multiPhoto && (
+          <View style={s.dotsRow} pointerEvents="none">
+            {photos.map((_, i) => (
+              <View key={i} style={[s.dot, i === photoIdx && s.dotActive]} />
+            ))}
+          </View>
+        )}
+
+        {mode === "own" && onAddPhotoPress && (
+          <TouchableOpacity
+            style={[s.addPhotoBtn, { top: insets.top + 52 }]}
+            onPress={onAddPhotoPress}
+            activeOpacity={0.8}
+          >
+            <Text style={s.addPhotoText}>+ PHOTO</Text>
+          </TouchableOpacity>
+        )}
+
+        <Animated.View
+          style={[s.heroIdentity, { opacity: identityOpacity }]}
+          pointerEvents="none"
+        >
           {locationLabel && (
-            <View style={s.locationRow}>
-              <MapPin
-                size={11}
-                color="rgba(255,255,255,0.55)"
-                strokeWidth={2}
-              />
-              <Text style={s.locationText}>{locationLabel}</Text>
+            <View style={s.locRow}>
+              <MapPin size={9} color="rgba(255,255,255,0.45)" strokeWidth={2} />
+              <Text style={s.locText}>{locationLabel.toUpperCase()}</Text>
             </View>
           )}
-          {/* Display name uses a serif-style — swap with PlayfairDisplay_700Bold when loaded */}
           <Text style={s.heroName}>
-            {firstName} {lastName}
+            {firstName.toUpperCase()}{"\n"}{lastName.toUpperCase()}
           </Text>
           <Text style={s.heroHandle}>@{username}</Text>
+          {socialLinks.length > 0 && (
+            <View style={s.socialRow}>
+              {socialLinks.map((sl) => {
+                const cfg = SOCIAL_CFG[sl.platform];
+                if (!cfg) return null;
+                return (
+                  <View key={sl.platform} style={[s.socialBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[s.socialBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </Animated.View>
       </Animated.View>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          SCROLL LAYER
-      ════════════════════════════════════════════════════════════════════ */}
+      {/* ── SCROLL ───────────────────────────────────────────────────────── */}
       <Animated.ScrollView
         style={s.scroll}
-        contentContainerStyle={[s.scrollContent, { paddingTop: BODY_TOP }]}
+        contentContainerStyle={{ paddingTop: HERO_H, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         bounces
         onScroll={Animated.event(
@@ -318,185 +421,213 @@ export default function ProfileBase({
               onRefresh={onRefresh}
               tintColor={C.coral}
               colors={[C.coral]}
-              progressViewOffset={insets.top + 10}
+              progressViewOffset={insets.top + 12}
             />
           ) : undefined
         }
       >
-        {/* Body sheet */}
-        <View style={s.body}>
-          {/* ── Pull indicator ─────────────────────────────────────────── */}
-          <View style={s.pullIndicator} />
+        {/* FLAT body — no borderRadius, no shadow, direct bleed from hero */}
+        <View style={[s.body, { minHeight: SCREEN_H - HERO_H + 280 }]}>
 
-          {/* ── CTA row ────────────────────────────────────────────────── */}
+          {/* ── CTA ──────────────────────────────────────────────────────── */}
           <View style={s.ctaRow}>
             {mode === "other" ? (
               <>
                 <TouchableOpacity
-                  style={[s.followBtn, isFollowing && s.followBtnActive]}
-                  activeOpacity={0.85}
+                  style={[s.btnPrimary, isFollowing && s.btnOutline]}
+                  activeOpacity={0.82}
                   onPress={onFollowPress}
                 >
-                  <Text
-                    style={[
-                      s.followBtnText,
-                      isFollowing && s.followBtnTextActive,
-                    ]}
-                  >
-                    {isFollowing ? "Following" : "Follow"}
+                  <Text style={[s.btnPrimaryText, isFollowing && { color: C.textSub }]}>
+                    {isFollowing ? "FOLLOWING" : "FOLLOW"}
                   </Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={s.squareBtn}
-                  activeOpacity={0.7}
-                  onPress={onMessagePress}
-                >
-                  <MessageCircle
-                    size={18}
-                    color={C.textSub}
-                    strokeWidth={1.8}
-                  />
+                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onMessagePress}>
+                  <MessageCircle size={16} color={C.textSub} strokeWidth={1.8} />
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={s.squareBtn}
-                  activeOpacity={0.7}
-                  onPress={onSharePress}
-                >
-                  <Share2 size={18} color={C.textSub} strokeWidth={1.8} />
+                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onSharePress}>
+                  <Share2 size={16} color={C.textSub} strokeWidth={1.8} />
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <TouchableOpacity
-                  style={s.editBtn}
-                  activeOpacity={0.85}
-                  onPress={onEditPress}
-                >
-                  <Edit3 size={14} color={C.text} strokeWidth={2} />
-                  <Text style={s.editBtnText}>Edit profile</Text>
+                <TouchableOpacity style={s.btnEdit} activeOpacity={0.82} onPress={onEditPress}>
+                  <Edit3 size={13} color="#fff" strokeWidth={2.2} />
+                  <Text style={s.btnEditText}>EDIT PROFILE</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={s.squareBtn}
-                  activeOpacity={0.7}
-                  onPress={onSharePress}
-                >
-                  <Share2 size={18} color={C.textSub} strokeWidth={1.8} />
+                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onSharePress}>
+                  <Share2 size={16} color={C.textSub} strokeWidth={1.8} />
                 </TouchableOpacity>
               </>
             )}
           </View>
 
-          {/* ── Stats — inline text, no cards ──────────────────────────── */}
+          {/* ── STATS ────────────────────────────────────────────────────── */}
           <View style={s.statsRow}>
-            <StatItem value={fmt(followingCount)} label="Following" />
-            <View style={s.statDot} />
-            <StatItem value={fmt(followerCount)} label="Followers" />
-            <View style={s.statDot} />
-            <StatItem
-              value={fmt(participatedEventsCount)}
-              label="Events"
-              accent
-            />
+            <View style={s.statItem}>
+              <Text style={s.statVal}>{fmt(followerCount)}</Text>
+              <Text style={s.statKey}>FOLLOWERS</Text>
+            </View>
+            <View style={s.statDiv} />
+            <View style={s.statItem}>
+              <Text style={s.statVal}>{fmt(followingCount)}</Text>
+              <Text style={s.statKey}>FOLLOWING</Text>
+            </View>
+            <View style={s.statDiv} />
+            <View style={s.statItem}>
+              <Text style={[s.statVal, { color: C.coral }]}>{fmt(participatedEventsCount)}</Text>
+              <Text style={s.statKey}>EVENTS</Text>
+            </View>
           </View>
 
-          {/* ── Bio ────────────────────────────────────────────────────── */}
-          {bio ? <Text style={s.bioText}>{bio}</Text> : null}
+          <Sep />
 
-          {/* ── Languages ──────────────────────────────────────────────── */}
-          {preferredLanguages.length > 0 && (
-            <View style={s.section}>
-              <Text style={s.sectionLabel}>Speaks</Text>
-              <View style={s.langRow}>
-                {preferredLanguages.map((code) => {
-                  const upper = code.toUpperCase();
-                  return (
-                    <View key={code} style={s.langPill}>
-                      <Text style={s.langFlag}>{LANG_FLAG[upper] ?? "🌐"}</Text>
-                      <Text style={s.langCode}>{upper}</Text>
-                    </View>
-                  );
-                })}
+          {/* ── ABOUT ────────────────────────────────────────────────────── */}
+          <Label t="ABOUT" />
+
+          {bio ? <Text style={s.bio}>{bio}</Text> : null}
+
+          <View style={s.metaList}>
+            {locationLabel && (
+              <View style={s.metaRow}>
+                <MapPin size={13} color={C.textMuted} strokeWidth={2} />
+                <Text style={s.metaKey}>Location</Text>
+                <Text style={[s.metaVal, { color: C.coral }]}>{locationLabel}</Text>
+              </View>
+            )}
+            {memberSince && (
+              <View style={s.metaRow}>
+                <Users size={13} color={C.textMuted} strokeWidth={2} />
+                <Text style={s.metaKey}>Member since</Text>
+                <Text style={s.metaVal}>{memberSince}</Text>
+              </View>
+            )}
+          </View>
+
+          {responseRate != null && (
+            <View style={s.rateWrap}>
+              <View style={s.rateHeader}>
+                <Text style={s.metaKey}>Response rate</Text>
+                <Text style={[s.metaVal, { color: responseRate >= 80 ? "#22C55E" : C.coral }]}>
+                  {responseRate}%
+                </Text>
+              </View>
+              <View style={s.rateTrack}>
+                <View
+                  style={[
+                    s.rateFill,
+                    {
+                      width: `${responseRate}%` as any,
+                      backgroundColor: responseRate >= 80 ? "#22C55E" : C.coral,
+                    },
+                  ]}
+                />
               </View>
             </View>
           )}
 
-          {/* ── Activity ───────────────────────────────────────────────── */}
+          <Sep />
+
+          {/* ── INTERESTS ────────────────────────────────────────────────── */}
+          {interests.length > 0 && (
+            <>
+              <Label t="INTERESTS" />
+              <InterestChips interests={interests} />
+              <Sep />
+            </>
+          )}
+
+          {/* ── LANGUAGES ────────────────────────────────────────────────── */}
+          {preferredLanguages.length > 0 && (
+            <>
+              <Label t="SPEAKS" />
+              <View style={s.langRow}>
+                {preferredLanguages.map((code) => {
+                  const up = code.toUpperCase();
+                  return (
+                    <View key={code} style={s.langPill}>
+                      <Text style={s.langFlag}>{LANG_FLAG[up] ?? "🌐"}</Text>
+                      <Text style={s.langCode}>{up}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <Sep />
+            </>
+          )}
+
+          {/* ── RECENT ACTIVITY ──────────────────────────────────────────── */}
           {recentEvents.length > 0 && (
-            <View style={s.section}>
-              <View style={s.sectionHeader}>
-                <View style={s.sectionLabelRow}>
-                  <Zap
-                    size={12}
-                    color={C.coral}
-                    strokeWidth={2.5}
-                    fill={C.coral}
-                  />
-                  <Text style={s.sectionLabel}>Recent activity</Text>
+            <>
+              <View style={s.actHeader}>
+                <View style={s.actTitleRow}>
+                  <View style={s.actDot} />
+                  <Text style={s.actHeaderLabel}>RECENT ACTIVITY</Text>
                 </View>
-                <TouchableOpacity
-                  activeOpacity={0.6}
-                  onPress={onSeeAllActivityPress}
-                >
-                  <Text style={s.seeAll}>See all</Text>
+                <TouchableOpacity activeOpacity={0.6} onPress={onSeeAllActivityPress}>
+                  <Text style={s.seeAll}>SEE ALL →</Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={s.eventList}>
+              <View style={s.actList}>
                 {recentEvents.map((ev, i) => (
-                  <EventRow
-                    key={ev.id}
-                    ev={ev}
-                    last={i === recentEvents.length - 1}
-                  />
+                  <ActivityCard key={ev.id} ev={ev} isFirst={i === 0} />
                 ))}
               </View>
-            </View>
+            </>
           )}
 
           {footer}
         </View>
       </Animated.ScrollView>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          FLOATING TOP BAR
-      ════════════════════════════════════════════════════════════════════ */}
+      {/* ── DARK-GLASS NAV — over photo only, fades out ──────────────────── */}
       <Animated.View
-        style={[
-          s.topBar,
-          {
-            paddingTop: insets.top + 10,
-            backgroundColor: topBarBg as any,
-          },
-        ]}
+        style={[s.navFloating, { paddingTop: insets.top + 10, opacity: darkNavOpacity }]}
         pointerEvents="box-none"
       >
-        <TouchableOpacity
-          style={s.navBtn}
-          activeOpacity={0.75}
-          onPress={onClosePress}
-        >
-          <ArrowLeft size={16} color="#fff" strokeWidth={2.5} />
+        <TouchableOpacity style={s.navDark} activeOpacity={0.75} onPress={onClosePress}>
+          <ArrowLeft size={15} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
-
         <View style={s.navRight}>
           {mode === "own" && (
-            <TouchableOpacity
-              style={s.navBtn}
-              activeOpacity={0.75}
-              onPress={onEditPress}
-            >
-              <Edit3 size={14} color="#fff" strokeWidth={2} />
+            <TouchableOpacity style={s.navDark} activeOpacity={0.75} onPress={onEditPress}>
+              <Edit3 size={13} color="#fff" strokeWidth={2} />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={s.navBtn}
+            style={s.navDark}
             activeOpacity={0.75}
             onPress={mode === "own" ? onSharePress : onMorePress}
           >
-            <MoreHorizontal size={16} color="#fff" strokeWidth={2} />
+            <MoreHorizontal size={15} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      {/* ── WHITE TOP BAR — fades in on scroll, Discover-style ───────────── */}
+      <Animated.View
+        style={[s.whiteBar, { paddingTop: insets.top, opacity: whiteBarOpacity }]}
+        pointerEvents="box-none"
+      >
+        <View style={s.whiteBarBg} />
+        <TouchableOpacity style={s.navLight} activeOpacity={0.75} onPress={onClosePress}>
+          <ArrowLeft size={15} color={C.ink} strokeWidth={2.5} />
+        </TouchableOpacity>
+        <Text style={s.whiteBarName} numberOfLines={1}>
+          {firstName.toUpperCase()} {lastName.toUpperCase()}
+        </Text>
+        <View style={s.navRight}>
+          {mode === "own" && (
+            <TouchableOpacity style={s.navLight} activeOpacity={0.75} onPress={onEditPress}>
+              <Edit3 size={13} color={C.ink} strokeWidth={2} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={s.navLight}
+            activeOpacity={0.75}
+            onPress={mode === "own" ? onSharePress : onMorePress}
+          >
+            <MoreHorizontal size={15} color={C.ink} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -507,336 +638,178 @@ export default function ProfileBase({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: C.heroBg },
 
   // ── Hero ──────────────────────────────────────────────────────────────────
-  heroAbs: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: W,
-    height: HERO_H,
-    zIndex: 0,
-  },
+  heroAbs: { position: "absolute", top: 0, left: 0, width: W, height: HERO_H, zIndex: 0 },
   heroImg: { width: W, height: HERO_H },
   heroFallback: {
-    width: W,
-    height: HERO_H,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FAFAFA",
+    width: W, height: HERO_H, backgroundColor: "#111",
+    alignItems: "center", justifyContent: "center",
   },
-  heroInitials: {
-    fontSize: 96,
-    fontWeight: "900",
-    color: "rgba(255,255,255,0.06)",
-    letterSpacing: -4,
+  heroFallbackText: {
+    fontSize: 100, fontWeight: "900",
+    color: "rgba(255,255,255,0.06)", letterSpacing: -4,
   },
-  heroScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.38)",
+
+  // Scrim — swap this View for expo-linear-gradient for a true bottom-fade
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.32)" },
+
+  dotsRow: {
+    position: "absolute", bottom: 100, left: 0, right: 0,
+    flexDirection: "row", justifyContent: "center", gap: 5,
   },
-  heroBottom: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 24,
-    paddingBottom: 30,
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: "rgba(255,255,255,0.28)" },
+  dotActive: { width: 16, backgroundColor: "#fff" },
+
+  addPhotoBtn: {
+    position: "absolute", right: 16,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 7, paddingHorizontal: 10, paddingVertical: 5,
   },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 8,
+  addPhotoText: { fontSize: 9, fontWeight: "800", color: "#fff", letterSpacing: 1.2 },
+
+  heroIdentity: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    paddingHorizontal: SIDE, paddingBottom: 24,
   },
-  locationText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.55)",
-    letterSpacing: 0.2,
-  },
-  // ↓ Swap fontFamily to "PlayfairDisplay_700Bold" once expo-google-fonts is installed
+  locRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 9 },
+  locText: { fontSize: 9, fontWeight: "700", color: "rgba(255,255,255,0.45)", letterSpacing: 1.5 },
   heroName: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: -1.8,
-    lineHeight: 44,
-    // fontFamily: "PlayfairDisplay_700Bold",
+    fontSize: 42, fontWeight: "900", color: "#fff",
+    letterSpacing: -2, lineHeight: 42, marginBottom: 7,
   },
-  heroHandle: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.45)",
-    marginTop: 5,
-    // fontFamily: "DMSans_400Regular",
-  },
+  heroHandle: { fontSize: 11, color: "rgba(255,255,255,0.30)", marginBottom: 13 },
+  socialRow: { flexDirection: "row", gap: 5, flexWrap: "wrap" },
+  socialBadge: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, minWidth: 30, alignItems: "center" },
+  socialBadgeText: { fontSize: 9, fontWeight: "900", letterSpacing: 0.4 },
 
   // ── Scroll ────────────────────────────────────────────────────────────────
-  scroll: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1,
-    backgroundColor: "transparent",
-  },
-  scrollContent: { paddingBottom: 100 },
+  scroll: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 },
 
-  // ── Body sheet ────────────────────────────────────────────────────────────
-  body: {
-    backgroundColor: C.bg,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    // Soft shadow to lift sheet off hero
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    elevation: 14,
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    minHeight: SCREEN_H - HERO_H + 200,
+  // FLAT — no borderRadius, no shadow
+  body: { backgroundColor: C.bg, paddingHorizontal: SIDE, paddingTop: 22 },
+
+  // ── CTA ───────────────────────────────────────────────────────────────────
+  ctaRow: { flexDirection: "row", gap: 8, alignItems: "center", marginBottom: 26 },
+  btnPrimary: {
+    flex: 1, height: 46, borderRadius: 10,
+    backgroundColor: C.coral, alignItems: "center", justifyContent: "center",
+  },
+  btnOutline: { backgroundColor: "transparent", borderWidth: 1.5, borderColor: C.borderMid },
+  btnPrimaryText: { fontSize: 11, fontWeight: "900", color: "#fff", letterSpacing: 1.2 },
+  btnEdit: {
+    flex: 1, height: 46, borderRadius: 10, backgroundColor: C.ink,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
+  },
+  btnEditText: { fontSize: 11, fontWeight: "900", color: "#fff", letterSpacing: 1.2 },
+  btnIcon: {
+    width: 46, height: 46, borderRadius: 10,
+    borderWidth: 1.5, borderColor: C.border, alignItems: "center", justifyContent: "center",
   },
 
-  // Pull indicator
-  pullIndicator: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.borderMid,
-    alignSelf: "center",
-    marginBottom: 22,
-  },
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  statsRow: { flexDirection: "row", alignItems: "center", marginBottom: 26 },
+  statItem: { flex: 1 },
+  statVal: { fontSize: 30, fontWeight: "900", color: C.ink, letterSpacing: -1.2, lineHeight: 32 },
+  statKey: { fontSize: 8, fontWeight: "700", color: C.textMuted, letterSpacing: 1.6, marginTop: 4 },
+  statDiv: { width: 1, height: 34, backgroundColor: C.border, marginHorizontal: 14 },
 
-  // ── CTA row ───────────────────────────────────────────────────────────────
-  ctaRow: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  followBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: C.coral,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  followBtnActive: {
-    backgroundColor: "transparent",
-    borderWidth: 1.5,
-    borderColor: C.borderMid,
-  },
-  followBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: 0.1,
-    // fontFamily: "DMSans_700Bold",
-  },
-  followBtnTextActive: { color: C.textSub },
-  editBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.borderMid,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 7,
-  },
-  editBtnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: C.text,
-    // fontFamily: "DMSans_600SemiBold",
-  },
-  squareBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.borderMid,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // ── Sep / label ───────────────────────────────────────────────────────────
+  sep: { height: 1, backgroundColor: C.border, marginVertical: 22 },
+  label: { fontSize: 8, fontWeight: "800", color: C.textMuted, letterSpacing: 2.4, marginBottom: 14 },
 
-  // ── Stats — inline, minimal ───────────────────────────────────────────────
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 22,
-    gap: 0,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 3,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: C.text,
-    letterSpacing: -0.8,
-    // fontFamily: "DMSans_700Bold",
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: C.textMuted,
-    letterSpacing: 0.3,
-    // fontFamily: "DMSans_500Medium",
-  },
-  statDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.border,
-    marginHorizontal: 2,
-  },
+  // ── About ─────────────────────────────────────────────────────────────────
+  bio: { fontSize: 14, color: C.textSub, lineHeight: 22, marginBottom: 16 },
+  metaList: { gap: 11, marginBottom: 4 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  metaKey: { flex: 1, fontSize: 13, color: C.textMuted, fontWeight: "500" },
+  metaVal: { fontSize: 13, fontWeight: "700", color: C.ink },
+  rateWrap: { marginTop: 12 },
+  rateHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+  rateTrack: { height: 3, borderRadius: 2, backgroundColor: C.surfaceAlt, overflow: "hidden" },
+  rateFill: { height: 3, borderRadius: 2 },
 
-  // ── Bio ───────────────────────────────────────────────────────────────────
-  bioText: {
-    fontSize: 15,
-    color: C.textSub,
-    lineHeight: 24,
-    marginBottom: 24,
-    // fontFamily: "DMSans_400Regular",
+  // ── Interest chips ────────────────────────────────────────────────────────
+  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 4 },
+  chip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingVertical: 8, paddingHorizontal: 11,
+    borderRadius: 9, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface,
   },
-
-  // ── Sections ──────────────────────────────────────────────────────────────
-  section: { marginBottom: 28 },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  sectionLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: C.text,
-    letterSpacing: 0.1,
-    marginBottom: 14,
-    // fontFamily: "DMSans_700Bold",
-  },
-  seeAll: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.coral,
-    // fontFamily: "DMSans_600SemiBold",
-  },
+  chipEmoji: { fontSize: 14 },
+  chipLabel: { fontSize: 9, fontWeight: "800", color: C.textSub, letterSpacing: 0.8 },
 
   // ── Languages ─────────────────────────────────────────────────────────────
-  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  langRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 4 },
   langPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 13,
-    backgroundColor: C.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.borderMid,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingVertical: 7, paddingHorizontal: 10,
+    borderRadius: 8, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface,
   },
-  langFlag: { fontSize: 15 },
-  langCode: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: C.text,
-    letterSpacing: 0.5,
-    // fontFamily: "DMSans_700Bold",
-  },
+  langFlag: { fontSize: 13 },
+  langCode: { fontSize: 10, fontWeight: "800", color: C.text, letterSpacing: 0.6 },
 
-  // ── Events ────────────────────────────────────────────────────────────────
-  eventList: {
-    backgroundColor: C.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: "hidden",
+  // ── Activity ──────────────────────────────────────────────────────────────
+  actHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    marginBottom: 14,
   },
-  eventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
-  },
-  eventIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: C.surfaceAlt,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  eventIconText: { fontSize: 20 },
-  eventInfo: { flex: 1 },
-  eventName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: C.text,
-    // fontFamily: "DMSans_600SemiBold",
-  },
-  eventMeta: {
-    fontSize: 11,
-    color: C.textMuted,
-    marginTop: 2,
-    // fontFamily: "DMSans_400Regular",
-  },
-  eventDateWrap: {
-    backgroundColor: C.surfaceWarm,
-    borderRadius: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  eventDate: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: C.coral,
-    letterSpacing: 0.6,
-    // fontFamily: "DMSans_700Bold",
-  },
+  actTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  actDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.coral },
+  actHeaderLabel: { fontSize: 8, fontWeight: "900", color: C.ink, letterSpacing: 2.4 },
+  seeAll: { fontSize: 9, fontWeight: "800", color: C.coral, letterSpacing: 0.6 },
+  actList: { gap: 9, marginBottom: 4 },
 
-  // ── Top bar ───────────────────────────────────────────────────────────────
-  topBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingBottom: 10,
+  // Discover-style card
+  actCard: {
+    backgroundColor: C.surface, borderRadius: 13,
+    borderWidth: 1, borderColor: C.border, padding: 13, gap: 6,
   },
-  navRight: { flexDirection: "row", gap: 8 },
-  navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.28)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
+  actTop: { flexDirection: "row", alignItems: "center", gap: 7 },
+  catPill: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5,
   },
+  catDot: { width: 4, height: 4, borderRadius: 2 },
+  catPillText: { fontSize: 8, fontWeight: "800", letterSpacing: 0.8 },
+  latestPill: { backgroundColor: C.coral, paddingHorizontal: 5, paddingVertical: 3, borderRadius: 4 },
+  latestText: { fontSize: 7, fontWeight: "900", color: "#fff", letterSpacing: 1 },
+  actDate: { marginLeft: "auto" as any, fontSize: 9, fontWeight: "700", color: C.textMuted, letterSpacing: 0.4 },
+  actName: { fontSize: 17, fontWeight: "900", color: C.ink, letterSpacing: -0.4, lineHeight: 19 },
+  actBottom: { flexDirection: "row", alignItems: "center", gap: 9 },
+  actMeta: { flex: 1, fontSize: 10, color: C.textMuted, fontWeight: "600" },
+  fillTrack: { width: 50, height: 3, borderRadius: 2, backgroundColor: C.border, overflow: "hidden" },
+  fillFill: { height: 3, borderRadius: 2 },
+  arrowBtn: { width: 28, height: 28, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+
+  // ── Nav ───────────────────────────────────────────────────────────────────
+  navFloating: {
+    position: "absolute", top: 0, left: 0, right: 0, zIndex: 100,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 16, paddingBottom: 10,
+  },
+  navDark: {
+    width: 34, height: 34, borderRadius: 9,
+    backgroundColor: "rgba(0,0,0,0.26)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center", justifyContent: "center",
+  },
+  whiteBar: {
+    position: "absolute", top: 0, left: 0, right: 0, zIndex: 100,
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 6, paddingBottom: 10, paddingTop: 10,
+  },
+  whiteBarBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: C.bg,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  whiteBarName: {
+    flex: 1, textAlign: "center",
+    fontSize: 12, fontWeight: "900", color: C.ink, letterSpacing: 0.6,
+  },
+  navLight: { width: 38, height: 38, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  navRight: { flexDirection: "row" },
 });

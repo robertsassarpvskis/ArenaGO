@@ -2,6 +2,22 @@
 import { useAuth } from "@/hooks/context/AuthContext";
 import { useState } from "react";
 
+export interface FollowResponse {
+  targetUser: {
+    username: string;
+    displayName: string;
+    profilePhoto?: { id: string; url: string };
+  };
+  follow: {
+    sourceUser: {
+      username: string;
+      displayName: string;
+      profilePhoto?: any;
+    };
+    createdAt: string;
+  };
+}
+
 export const useProfileToFollow = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -22,7 +38,10 @@ export const useProfileToFollow = () => {
         },
       );
 
-      return res.ok;
+      if (!res.ok) return false;
+
+      const data: FollowResponse = await res.json();
+      return true;
     } catch (error) {
       console.error("Follow error:", error);
       return false;

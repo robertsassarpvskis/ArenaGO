@@ -1,9 +1,11 @@
 // app/(tabs)/UserSearchScreen.tsx
 import Ionicons from "@expo/vector-icons/Ionicons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -14,19 +16,49 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import UserProfileModal from "../../modal/UserProfileModal";
 
+/* ===================== DESIGN TOKENS ===================== */
+
+const C = {
+  bg: "#FAFAFA",
+  surface: "#FFFFFF",
+  surfaceAlt: "#F4F4F4",
+  border: "#EBEBEB",
+  borderMid: "#D8D8D8",
+  text: "#111111",
+  textSub: "#555555",
+  textMuted: "#AAAAAA",
+  coral: "#FF6B58",
+  coralLight: "rgba(255,107,88,0.10)",
+  coralBorder: "rgba(255,107,88,0.30)",
+  success: "#1A9E6A",
+  successLight: "rgba(26,158,106,0.08)",
+  successBorder: "rgba(26,158,106,0.25)",
+  ink: "#1A1A1A",
+  chalk: "#F0EEE9",
+  overlay: "rgba(17,17,17,0.6)",
+} as const;
+
 /* ===================== TYPES ===================== */
+
+interface ProfilePhoto {
+  id: string;
+  url: string;
+  contentType: string;
+}
 
 interface ApiUser {
   userName: string;
   firstName: string;
   lastName: string;
   preferredLanguages: string[];
+  profilePhoto?: ProfilePhoto;
 }
 
 interface User {
   id: string;
   fullName: string;
   username: string;
+  avatar?: string;
   interests: string[];
 }
 
@@ -38,6 +70,7 @@ export default function UserSearchScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchFocusAnim = useRef(new Animated.Value(0)).current;
 
   // Modal state
   const [selectedUsername, setSelectedUsername] = useState("");
@@ -74,6 +107,7 @@ export default function UserSearchScreen() {
           id: u.userName,
           fullName: `${u.firstName} ${u.lastName}`,
           username: u.userName,
+          avatar: u.profilePhoto?.url,
           interests: u.preferredLanguages.slice(0, 3),
         })),
       );
@@ -124,15 +158,20 @@ export default function UserSearchScreen() {
         onPress={() => openUserProfile(item.username)}
       >
         <View style={styles.cardBody}>
-          {/* Avatar Circle */}
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>
-              {item.fullName
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </Text>
-          </View>
+          {/* Avatar with Image or Initials */}
+          {item.avatar ? (
+            <Image source={{ uri: item.avatar }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>
+                {item.fullName
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .toUpperCase()}
+              </Text>
+            </View>
+          )}
 
           {/* User Info */}
           <View style={styles.userInfo}>
@@ -150,7 +189,7 @@ export default function UserSearchScreen() {
           </View>
 
           {/* Arrow Icon */}
-          <Ionicons name="chevron-forward" size={18} color="#C7C7C7" />
+          <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
         </View>
       </Pressable>
     );
@@ -159,37 +198,87 @@ export default function UserSearchScreen() {
   return (
     <>
       <SafeAreaView style={styles.container}>
-        {/* Search Title */}
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Find People</Text>
+          <Text style={styles.headerSubtitle}>Connect with the community</Text>
+        </View>
+
+        {/* Modern Search Input */}
         <View style={styles.searchFieldGroup}>
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={28} color="#D0D0D0" />
+            <Ionicons name="search" size={20} color={C.textMuted} />
 
             <TextInput
               style={styles.searchInput}
               placeholder="Find people..."
-              placeholderTextColor="#D0D0D0"
+              placeholderTextColor={C.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
               maxLength={64}
+              onFocus={() =>
+                Animated.timing(searchFocusAnim, {
+                  toValue: 1,
+                  duration: 180,
+                  useNativeDriver: false,
+                }).start()
+              }
+              onBlur={() =>
+                Animated.timing(searchFocusAnim, {
+                  toValue: 0,
+                  duration: 180,
+                  useNativeDriver: false,
+                }).start()
+              }
             />
 
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={20} color="#FF6B58" />
+                <Ionicons name="close-circle" size={18} color={C.coral} />
               </Pressable>
             )}
           </View>
 
-          <View style={styles.searchBorder} />
+          <Animated.View
+            style={[
+              styles.searchUnderline,
+              {
+                backgroundColor: searchFocusAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [C.border, C.coral],
+                }),
+                height: searchFocusAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 2],
+                }),
+              },
+            ]}
+          />
         </View>
 
         {/* Content */}
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator color="#FF6B58" />
+            <ActivityIndicator size="large" color={C.coral} />
           </View>
         ) : error ? (
-          <Text style={styles.error}>{error}</Text>
+          <View style={styles.errorContainer}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={48}
+              color={C.textMuted}
+            />
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : filteredUsers.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="people-outline" size={48} color={C.textMuted} />
+            <Text style={styles.emptyText}>
+              {searchQuery.trim().length > 0
+                ? "No users found"
+                : "Search to discover people"}
+            </Text>
+          </View>
         ) : (
           <FlatList
             data={filteredUsers}
@@ -202,7 +291,7 @@ export default function UserSearchScreen() {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                colors={["#ff6b58"]}
+                colors={[C.coral]}
               />
             }
           />
@@ -224,40 +313,57 @@ export default function UserSearchScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    // flex: 1,
-    backgroundColor: "FFFFFF",
+    flex: 1,
+    backgroundColor: C.bg,
     paddingHorizontal: 16,
+  },
+
+  header: {
+    marginBottom: 24,
+    marginTop: 8,
+  },
+
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: C.text,
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: C.textMuted,
+    letterSpacing: 0.5,
   },
 
   searchFieldGroup: {
     position: "relative",
+    marginBottom: 24,
   },
 
   searchInput: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#1A1A1A",
-    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: "600",
+    color: C.text,
+    paddingVertical: 12,
   },
-  searchBorder: {
-    display: "none",
+
+  searchUnderline: {
+    marginTop: 8,
+    borderRadius: 1,
   },
+
   searchRow: {
     paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#F7F7F7",
-    borderRadius: 14,
-    height: 48,
-  },
-
-  clearButton: {
-    position: "absolute",
-    right: 0,
-    top: 12,
-    padding: 8,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    height: 44,
   },
 
   loadingContainer: {
@@ -266,19 +372,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  emptyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: C.textMuted,
+    textAlign: "center",
+  },
+
   listContent: {
     paddingBottom: 80,
   },
 
   separator: {
-    height: 12,
+    height: 10,
   },
 
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    backgroundColor: C.surface,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#F0F0F0",
+    borderColor: C.border,
+    overflow: "hidden",
   },
 
   cardPressed: {
@@ -289,77 +417,82 @@ const styles = StyleSheet.create({
   cardBody: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     gap: 12,
   },
 
+  avatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: C.surfaceAlt,
+  },
+
   avatarCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 16,
-    backgroundColor: "#F1F1F1",
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: C.coralLight,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#FF6B58",
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: C.coralBorder,
   },
 
   avatarText: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#555",
-    letterSpacing: 1,
+    fontSize: 18,
+    fontWeight: "800",
+    color: C.coral,
+    letterSpacing: 0.5,
   },
 
   userInfo: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
 
   name: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#111",
+    color: C.text,
   },
 
   username: {
-    fontSize: 13,
-    color: "#888",
+    fontSize: 12,
+    color: C.textMuted,
     fontWeight: "500",
+    letterSpacing: 0.3,
   },
 
   interestsRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 5,
     marginTop: 6,
     flexWrap: "wrap",
   },
 
   interestTag: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: "#F2F2F2",
-    borderWidth: 0,
-    borderColor: "#FF6B58",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 0.5,
+    borderColor: C.border,
   },
 
   interestText: {
-    color: "#555",
+    color: C.textSub,
     fontWeight: "600",
-    fontSize: 11,
-    letterSpacing: 0.5,
+    fontSize: 10,
+    letterSpacing: 0.3,
   },
 
   error: {
     textAlign: "center",
-    color: "#EF4444",
-    marginTop: 40,
-    fontWeight: "700",
+    color: C.text,
+    marginTop: 20,
+    fontWeight: "600",
     fontSize: 16,
   },
 });

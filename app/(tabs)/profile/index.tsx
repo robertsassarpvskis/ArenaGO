@@ -1,6 +1,11 @@
 // app/(tabs)/MyProfileScreen.tsx
 
-import ProfileBase, { C, Interest, ProfileEvent, SocialLink } from "@/components/layout/ProfileBase";
+import ProfileBase, {
+  C,
+  Interest,
+  ProfileEvent,
+  SocialLink,
+} from "@/components/layout/ProfileBase";
 import { useAuth } from "@/hooks/context/AuthContext";
 import { useProfile } from "@/hooks/profile/useProfile";
 import { LogOut } from "lucide-react-native";
@@ -9,7 +14,10 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function MyProfileScreen() {
   const { user, logout } = useAuth();
-  const { profile, refetch } = useProfile(user?.userName ?? "", user?.accessToken);
+  const { profile, refetch } = useProfile(
+    user?.userName ?? "",
+    user?.accessToken,
+  );
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -24,7 +32,11 @@ export default function MyProfileScreen() {
       "Are you sure you want to sign out?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Sign out", style: "destructive", onPress: async () => await logout() },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: async () => await logout(),
+        },
       ],
       { cancelable: true },
     );
@@ -45,17 +57,17 @@ export default function MyProfileScreen() {
 
   const MOCK_INTERESTS: Interest[] = [
     { id: "basketball", label: "Basketball" },
-    { id: "yoga",       label: "Yoga"       },
-    { id: "running",    label: "Running"    },
-    { id: "tennis",     label: "Tennis"     },
-    { id: "cycling",    label: "Cycling"    },
-    { id: "coffee",     label: "Coffee"     },
+    { id: "yoga", label: "Yoga" },
+    { id: "running", label: "Running" },
+    { id: "tennis", label: "Tennis" },
+    { id: "cycling", label: "Cycling" },
+    { id: "coffee", label: "Coffee" },
   ];
 
   const MOCK_SOCIAL: SocialLink[] = [
     { platform: "instagram", handle: "alex.rivers" },
-    { platform: "strava",    handle: "alexrivers"  },
-    { platform: "twitter",   handle: "alex_rivers" },
+    { platform: "strava", handle: "alexrivers" },
+    { platform: "twitter", handle: "alex_rivers" },
   ];
 
   const MOCK_EVENTS: ProfileEvent[] = [
@@ -105,7 +117,11 @@ export default function MyProfileScreen() {
 
   const signOutFooter = (
     <View style={footer.wrap}>
-      <TouchableOpacity style={footer.btn} onPress={handleLogout} activeOpacity={0.6}>
+      <TouchableOpacity
+        style={footer.btn}
+        onPress={handleLogout}
+        activeOpacity={0.6}
+      >
         <LogOut size={12} color={C.textMuted} strokeWidth={2} />
         <Text style={footer.text}>SIGN OUT</Text>
       </TouchableOpacity>
@@ -137,11 +153,18 @@ export default function MyProfileScreen() {
       recentEvents={MOCK_EVENTS}
       refreshing={refreshing}
       onRefresh={handleRefresh}
-      onEditPress={() => { /* TODO: navigate to EditProfileScreen */ }}
-      onSharePress={() => { /* TODO: share profile link */ }}
-      onClosePress={() => { /* own wall — no-op */ }}
-      onSeeAllActivityPress={() => { /* TODO: navigate to activity feed */ }}
-      onAddPhotoPress={() => { /* TODO: open image picker */ }}
+      onEditPress={() => {
+        /* TODO: navigate to EditProfileScreen */
+      }}
+      onSharePress={() => {
+        /* TODO: share profile link */
+      }}
+      onClosePress={() => {
+        /* own wall — no-op */
+      }}
+      onSeeAllActivityPress={() => {
+        /* TODO: navigate to activity feed */
+      }}
       footer={signOutFooter}
     />
   );
@@ -149,14 +172,33 @@ export default function MyProfileScreen() {
 
 const footer = StyleSheet.create({
   wrap: {
-    marginTop: 36, alignItems: "center", gap: 10,
-    paddingTop: 22, borderTopWidth: 1, borderTopColor: C.border,
+    marginTop: 36,
+    alignItems: "center",
+    gap: 10,
+    paddingTop: 22,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
   btn: {
-    flexDirection: "row", alignItems: "center", gap: 7,
-    paddingVertical: 10, paddingHorizontal: 22,
-    borderRadius: 10, borderWidth: 1.5, borderColor: C.borderMid,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.borderMid,
   },
-  text: { fontSize: 11, fontWeight: "800", color: C.textMuted, letterSpacing: 0.8 },
-  version: { fontSize: 9, fontWeight: "700", color: C.borderMid, letterSpacing: 2.2 },
+  text: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: C.textMuted,
+    letterSpacing: 0.8,
+  },
+  version: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: C.borderMid,
+    letterSpacing: 2.2,
+  },
 });

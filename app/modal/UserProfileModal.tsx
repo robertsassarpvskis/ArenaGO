@@ -10,6 +10,8 @@ import ProfileBase, {
   SocialLink,
 } from "@/components/layout/ProfileBase";
 import { useAuth } from "@/hooks/context/AuthContext";
+import { useFollowers } from "@/hooks/profile/useFollowers";
+import { useProfileToFollow } from "@/hooks/profile/useProfileToFollow";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -31,10 +33,10 @@ interface UserProfileData {
   bio?: string;
   gender?: boolean;
   profilePhoto?: { url: string };
-  photos?: string[];                                          // carousel images
+  photos?: string[]; // carousel images
   lastKnownLocation?: { latitude: number; longitude: number } | string;
   preferredLanguages?: string[];
-  interests?: string[];                                       // e.g. ["basketball", "yoga"]
+  interests?: string[]; // e.g. ["basketball", "yoga"]
   socialLinks?: { platform: string; handle: string }[];
   memberSince?: string;
   responseRate?: number;
@@ -118,7 +120,15 @@ function mapSocialLinks(
   raw?: { platform: string; handle: string }[],
 ): SocialLink[] {
   if (!raw || raw.length === 0) return [];
-  const allowed = ["instagram", "twitter", "strava", "youtube", "tiktok", "linkedin", "spotify"];
+  const allowed = [
+    "instagram",
+    "twitter",
+    "strava",
+    "youtube",
+    "tiktok",
+    "linkedin",
+    "spotify",
+  ];
   return raw
     .filter((s) => allowed.includes(s.platform.toLowerCase()))
     .map((s) => ({
@@ -134,16 +144,41 @@ export default function UserProfileScreen({
   onBack,
 }: UserProfileScreenProps) {
   const { user } = useAuth();
+  const {
+    followUser,
+    unfollowUser,
+    loading: followLoading,
+  } = useProfileToFollow();
+  const { followers, setFollowers } = useFollowers(username);
 
   const [profile, setProfile] = useState<UserProfileData | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Fetch initial profile data
   useEffect(() => {
     if (username) fetchUserProfile();
   }, [username]);
+
+  // Derive follow state from followers list
+  useEffect(() => {
+    if (!user || !followers) return;
+
+    const isCurrentUserFollowing = followers.some(
+      (f) => f.sourceUser.username === user.userName,
+    );
+    setIsFollowing(isCurrentUserFollowing);
+  }, [followers, user]);
+
+  // Sync follower count from profile
+  useEffect(() => {
+    if (profile?.followerCount) {
+      setFollowerCount(profile.followerCount);
+    }
+  }, [profile?.followerCount]);
 
   const fetchUserProfile = async () => {
     try {
@@ -156,11 +191,50 @@ export default function UserProfileScreen({
       if (!response.ok) throw new Error("Failed to fetch user profile");
       const data = await response.json();
       setProfile(data);
+      setFollowerCount(data.followerCount);
     } catch (err: any) {
       setError(err?.message ? String(err.message) : "An error occurred");
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  // Handle follow action with real-time stats update
+  const handleFollowPress = async () => {
+    if (isFollowing) {
+      // Unfollow
+      setIsFollowing(false);
+      setFollowerCount((c) => c - 1);
+
+      const success = await unfollowUser(username);
+
+      if (!success) {
+        // Rollback on failure
+        setIsFollowing(true);
+        setFollowerCount((c) => c + 1);
+      } else {
+        // Update followers list after successful unfollow
+        setFollowers(
+          followers.filter((f) => f.sourceUser.username !== user?.userName),
+        );
+      }
+    } else {
+      // Follow
+      setIsFollowing(true);
+      setFollowerCount((c) => c + 1);
+
+      const success = await followUser(username);
+
+      if (!success) {
+        // Rollback on failure
+        setIsFollowing(false);
+        setFollowerCount((c) => c - 1);
+      } else {
+        // Refresh followers list after successful follow to get the new entry
+        // For now, just trigger a refetch of followers
+        fetchUserProfile();
+      }
     }
   };
 
@@ -223,13 +297,13 @@ export default function UserProfileScreen({
           memberSince={profile.memberSince}
           responseRate={profile.responseRate}
           followingCount={profile.followingCount}
-          followerCount={profile.followerCount}
+          followerCount={followerCount}
           participatedEventsCount={profile.participatedEventsCount}
           isFollowing={isFollowing}
           recentEvents={MOCK_RECENT_EVENTS}
           refreshing={refreshing}
           onRefresh={fetchUserProfile}
-          onFollowPress={() => setIsFollowing((f) => !f)}
+          onFollowPress={handleFollowPress}
           onMessagePress={() => {
             /* TODO: navigate to chat */
           }}
@@ -261,7 +335,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: C.surfaceAlt,           // was C.surface — fixed
+    backgroundColor: C.surfaceAlt, // was C.surface — fixed
     borderWidth: 1,
     borderColor: C.border,
     alignItems: "center",

@@ -1,6 +1,6 @@
 // app/(tabs)/UserSearchScreen.tsx
 import Ionicons from "@expo/vector-icons/Ionicons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -19,23 +19,17 @@ import UserProfileModal from "../../modal/UserProfileModal";
 /* ===================== DESIGN TOKENS ===================== */
 
 const C = {
-  bg: "#FAFAFA",
+  bg: "#F7F6F3",
   surface: "#FFFFFF",
-  surfaceAlt: "#F4F4F4",
-  border: "#EBEBEB",
-  borderMid: "#D8D8D8",
-  text: "#111111",
-  textSub: "#555555",
-  textMuted: "#AAAAAA",
-  coral: "#FF6B58",
-  coralLight: "rgba(255,107,88,0.10)",
-  coralBorder: "rgba(255,107,88,0.30)",
-  success: "#1A9E6A",
-  successLight: "rgba(26,158,106,0.08)",
-  successBorder: "rgba(26,158,106,0.25)",
-  ink: "#1A1A1A",
-  chalk: "#F0EEE9",
-  overlay: "rgba(17,17,17,0.6)",
+  surfaceAlt: "#F0EEE9",
+  border: "#E8E6E1",
+  borderMid: "#D4D1CB",
+  text: "#1A1814",
+  textSub: "#5C5850",
+  textMuted: "#A09990",
+  coral: "#E8543A",
+  coralLight: "rgba(232,84,58,0.08)",
+  coralBorder: "rgba(232,84,58,0.20)",
 } as const;
 
 /* ===================== TYPES ===================== */
@@ -71,8 +65,6 @@ export default function UserSearchScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchFocusAnim = useRef(new Animated.Value(0)).current;
-
-  // Modal state
   const [selectedUsername, setSelectedUsername] = useState("");
 
   /* ===================== API ===================== */
@@ -129,36 +121,31 @@ export default function UserSearchScreen() {
     setRefreshing(false);
   };
 
-  /* ===================== EFFECTS ===================== */
-
   useEffect(() => {
-    fetchUsers(); // fetch all users once
+    fetchUsers();
   }, []);
-  /* ===================== ACTIONS ===================== */
 
-  const openUserProfile = (username: string) => {
-    setSelectedUsername(username);
-  };
+  /* ===================== DERIVED ===================== */
 
   const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase().trim();
-
     return (
       user.fullName.toLowerCase().includes(query) ||
       user.username.toLowerCase().includes(query) ||
       user.interests.some((lang) => lang.toLowerCase().includes(query))
     );
   });
-  /* ===================== RENDER ===================== */
 
-  const renderUser = ({ item, index }: { item: User; index: number }) => {
-    return (
+  /* ===================== RENDER ITEM ===================== */
+
+  // Stable reference — won't cause FlatList to remount items on each keystroke
+  const renderUser = useCallback(
+    ({ item }: { item: User }) => (
       <Pressable
         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        onPress={() => openUserProfile(item.username)}
+        onPress={() => setSelectedUsername(item.username)}
       >
         <View style={styles.cardBody}>
-          {/* Avatar with Image or Initials */}
           {item.avatar ? (
             <Image source={{ uri: item.avatar }} style={styles.avatarImage} />
           ) : (
@@ -173,7 +160,6 @@ export default function UserSearchScreen() {
             </View>
           )}
 
-          {/* User Info */}
           <View style={styles.userInfo}>
             <Text style={styles.name}>{item.fullName}</Text>
             <Text style={styles.username}>@{item.username}</Text>
@@ -188,117 +174,142 @@ export default function UserSearchScreen() {
             )}
           </View>
 
-          {/* Arrow Icon */}
-          <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
+          <Ionicons name="chevron-forward" size={16} color={C.borderMid} />
         </View>
       </Pressable>
-    );
+    ),
+    [],
+  );
+
+  /* ===================== FOOTER STATES ===================== */
+
+  const renderFooter = () => {
+    if (loading) {
+      return (
+        <View style={styles.stateContainer}>
+          <ActivityIndicator size="large" color={C.coral} />
+        </View>
+      );
+    }
+    if (error) {
+      return (
+        <View style={styles.stateContainer}>
+          <Ionicons name="alert-circle-outline" size={40} color={C.textMuted} />
+          <Text style={styles.stateText}>{error}</Text>
+        </View>
+      );
+    }
+    if (filteredUsers.length === 0) {
+      return (
+        <View style={styles.stateContainer}>
+          <Ionicons name="people-outline" size={40} color={C.textMuted} />
+          <Text style={styles.stateText}>
+            {searchQuery.trim().length > 0
+              ? "No results found"
+              : "Search to discover people"}
+          </Text>
+        </View>
+      );
+    }
+    return null;
   };
+
+  /* ===================== RENDER ===================== */
 
   return (
     <>
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Find People</Text>
-          <Text style={styles.headerSubtitle}>Connect with the community</Text>
-        </View>
+      <SafeAreaView style={styles.container} edges={["top"]}>
 
-        {/* Modern Search Input */}
-        <View style={styles.searchFieldGroup}>
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={20} color={C.textMuted} />
-
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Find people..."
-              placeholderTextColor={C.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              maxLength={64}
-              onFocus={() =>
-                Animated.timing(searchFocusAnim, {
-                  toValue: 1,
-                  duration: 180,
-                  useNativeDriver: false,
-                }).start()
-              }
-              onBlur={() =>
-                Animated.timing(searchFocusAnim, {
-                  toValue: 0,
-                  duration: 180,
-                  useNativeDriver: false,
-                }).start()
-              }
-            />
-
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={18} color={C.coral} />
-              </Pressable>
-            )}
+        {/*
+         * KEY FIX: TextInput lives here, OUTSIDE FlatList.
+         * When filteredUsers changes, FlatList re-renders but the input
+         * is untouched — keyboard stays open.
+         */}
+        <View style={styles.topSection}>
+          <View style={styles.header}>
+            <Text style={styles.headerEyebrow}>Community</Text>
+            <Text style={styles.headerTitle}>Find People</Text>
           </View>
 
-          <Animated.View
-            style={[
-              styles.searchUnderline,
-              {
-                backgroundColor: searchFocusAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [C.border, C.coral],
-                }),
-                height: searchFocusAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 2],
-                }),
-              },
-            ]}
-          />
-        </View>
-
-        {/* Content */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={C.coral} />
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={48}
-              color={C.textMuted}
-            />
-            <Text style={styles.error}>{error}</Text>
-          </View>
-        ) : filteredUsers.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={48} color={C.textMuted} />
-            <Text style={styles.emptyText}>
-              {searchQuery.trim().length > 0
-                ? "No users found"
-                : "Search to discover people"}
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredUsers}
-            keyExtractor={(i) => i.id}
-            renderItem={renderUser}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                colors={[C.coral]}
+          <View style={styles.searchFieldGroup}>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={18} color={C.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name or language…"
+                placeholderTextColor={C.textMuted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                maxLength={64}
+                onFocus={() =>
+                  Animated.timing(searchFocusAnim, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start()
+                }
+                onBlur={() =>
+                  Animated.timing(searchFocusAnim, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start()
+                }
               />
-            }
-          />
-        )}
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+                  <Ionicons name="close-circle" size={17} color={C.textMuted} />
+                </Pressable>
+              )}
+            </View>
+            <Animated.View
+              style={[
+                styles.searchUnderline,
+                {
+                  backgroundColor: searchFocusAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [C.border, C.coral],
+                  }),
+                  height: searchFocusAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 2],
+                  }),
+                },
+              ]}
+            />
+          </View>
+
+          {!loading && !error && filteredUsers.length > 0 && (
+            <Text style={styles.resultCount}>
+              {filteredUsers.length}{" "}
+              {filteredUsers.length === 1 ? "person" : "people"}
+            </Text>
+          )}
+        </View>
+
+        <FlatList
+          data={loading || error ? [] : filteredUsers}
+          keyExtractor={(i) => i.id}
+          renderItem={renderUser}
+          ListFooterComponent={renderFooter()}
+          showsVerticalScrollIndicator={false}
+          // Tapping a result won't dismiss the keyboard accidentally
+          keyboardShouldPersistTaps="handled"
+          // Dragging the list will dismiss it naturally
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={C.coral}
+              colors={[C.coral]}
+            />
+          }
+        />
       </SafeAreaView>
 
-      {/* User Profile Modal */}
       {selectedUsername !== "" && (
         <UserProfileModal
           username={selectedUsername}
@@ -315,103 +326,103 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
-    paddingHorizontal: 16,
+  },
+
+  topSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
   },
 
   header: {
     marginBottom: 24,
-    marginTop: 8,
+  },
+
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 2,
+    color: C.coral,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
 
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "900",
+    fontSize: 36,
+    fontWeight: "800",
     color: C.text,
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: C.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: -1,
+    lineHeight: 40,
   },
 
   searchFieldGroup: {
-    position: "relative",
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 4,
+    height: 44,
   },
 
   searchInput: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "500",
     color: C.text,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
 
   searchUnderline: {
-    marginTop: 8,
-    borderRadius: 1,
+    marginTop: 6,
+    borderRadius: 2,
   },
 
-  searchRow: {
-    paddingHorizontal: 12,
-    flexDirection: "row",
+  resultCount: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.textMuted,
+    letterSpacing: 0.3,
+    marginLeft: 6,
+    marginBottom: 8,
+  },
+
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 100,
+  },
+
+  separator: {
+    height: 8,
+  },
+
+  stateContainer: {
+    paddingTop: 64,
     alignItems: "center",
-    gap: 10,
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    height: 44,
+    gap: 14,
   },
 
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 16,
-  },
-
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  emptyText: {
-    fontSize: 16,
+  stateText: {
+    fontSize: 15,
     fontWeight: "600",
     color: C.textMuted,
     textAlign: "center",
   },
 
-  listContent: {
-    paddingBottom: 80,
-  },
-
-  separator: {
-    height: 10,
-  },
-
   card: {
     backgroundColor: C.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
     overflow: "hidden",
   },
 
   cardPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
+    opacity: 0.65,
+    transform: [{ scale: 0.985 }],
   },
 
   cardBody: {
@@ -423,16 +434,16 @@ const styles = StyleSheet.create({
   },
 
   avatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     backgroundColor: C.surfaceAlt,
   },
 
   avatarCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     backgroundColor: C.coralLight,
     alignItems: "center",
     justifyContent: "center",
@@ -441,7 +452,7 @@ const styles = StyleSheet.create({
   },
 
   avatarText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
     color: C.coral,
     letterSpacing: 0.5,
@@ -462,13 +473,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: C.textMuted,
     fontWeight: "500",
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
 
   interestsRow: {
     flexDirection: "row",
     gap: 5,
-    marginTop: 6,
+    marginTop: 7,
     flexWrap: "wrap",
   },
 
@@ -485,14 +496,6 @@ const styles = StyleSheet.create({
     color: C.textSub,
     fontWeight: "600",
     fontSize: 10,
-    letterSpacing: 0.3,
-  },
-
-  error: {
-    textAlign: "center",
-    color: C.text,
-    marginTop: 20,
-    fontWeight: "600",
-    fontSize: 16,
+    letterSpacing: 0.4,
   },
 });

@@ -368,7 +368,7 @@ const jn = StyleSheet.create({
   btnGlass: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingVertical: 9, paddingHorizontal: 14,
-    borderRadius: BORDER_RADIUS,
+    borderRadius: 4,
     backgroundColor: "rgba(255,255,255,0.16)",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.30)",
   },

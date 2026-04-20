@@ -1,6 +1,7 @@
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { PlatformPressable } from "@react-navigation/elements";
 import { useLinkBuilder } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
 import { memo, useEffect } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import Animated, {
@@ -131,6 +132,9 @@ export function CustomTabBar({
           const isFocused = state.index === index;
 
           const onPress = () => {
+            // Trigger haptic feedback on tab press
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+
             const event = navigation.emit({
               type: "tabPress",
               target: route.key,

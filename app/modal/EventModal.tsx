@@ -2,15 +2,17 @@
 // Minimalist × Street/Urban modal redesign.
 //
 // Layout order:
-//   Hero → Stats → Attending → About → Where → Map → Host
+//   Hero (full-bleed, drag handle overlaid) → Stats → Attending → About → Where → Map → Host
 //
-// Design principles:
-//   • Near-monochrome. Accent only on key status (joined, spots, CTA).
-//   • No gradients. No floating decorative elements. No heavy shadows.
-//   • Typography does the heavy lifting — weight contrast over color contrast.
-//   • Every section is flat, clean, easy to scan.
-//   • Street edge: uppercase labels, tight tracking, raw mono stat numbers,
-//     ink-block tag chips, square avatar corners.
+// Hero behaviour (Bolt Food style):
+//   • Hero image fills the top of the sheet edge-to-edge.
+//   • Drag handle floats over the image (white pill, semi-transparent).
+//   • No empty space above the image.
+//   • No-image fallback: plain neutral strip — handle overlaid the same way.
+//
+// CategoryPill:
+//   • Warm filled rounded pill replacing the old ink-block Tag chip.
+//   • Color varies by category via getCategoryPillStyle palette.
 //
 // Dismiss gesture (Bolt-Food style):
 //   • Over-scroll past top past OVERSCROLL_DISMISS
@@ -19,6 +21,7 @@
 
 import JoinEventButton from "@/components/common/buttons/JoinEventButton";
 import EventLocationMap from "@/components/common/event/EventLocationMap";
+import InterestBadge from "@/components/common/InterestBadge";
 import { useLocation } from "@/hooks/useLocation";
 import { formatDistance, getDistanceKm } from "@/scripts/distance";
 import { formatEventTime, getTimeLabel } from "@/scripts/timeUtils";
@@ -49,13 +52,13 @@ import {
   Avatar,
   BaseEventModalProps,
   C,
+  CategoryPill,
   DISMISS_THRESHOLD,
   Divider,
   H_PAD,
   MODAL_HEIGHT,
   SCREEN_HEIGHT,
   SectionLabel,
-  Tag,
   sharedS,
 } from "../../components/layout/EventModalBase";
 import UserProfileModal from "../modal/UserProfileModal";
@@ -63,8 +66,12 @@ import UserListModal, { UserListParticipant } from "./UserListModal";
 
 // ─── Dismiss constants ────────────────────────────────────────────────────────
 
-const OVERSCROLL_DISMISS = 52;
+const OVERSCROLL_DISMISS = 36;
 const VELOCITY_DISMISS = 0.55;
+
+// ─── Hero height ──────────────────────────────────────────────────────────────
+// Matches the Bolt Food screenshot proportions (~56% of 390px screen width).
+const HERO_HEIGHT = 320;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +81,7 @@ export interface EventModalProps extends BaseEventModalProps {
   onLeave?: () => void;
   isSaved: boolean;
   onToggleSave: () => void;
+  onSelectUser?: (username: string) => void;
 }
 
 // ─── Bottom bars ─────────────────────────────────────────────────────────────
@@ -88,7 +96,6 @@ function ParticipantBottomBar({ onLeave }: { onLeave: () => void }) {
 
   return (
     <View style={sharedS.bottomInner}>
-      {/* Joined indicator — a single quiet pill */}
       <View style={MS.joinedPill}>
         <Ionicons name="checkmark" size={14} color={C.joined} />
         <Text style={MS.joinedPillText}>YOU'RE IN</Text>
@@ -116,7 +123,6 @@ function BasicBottomBar({
       <View style={{ flex: 1 }}>
         <JoinEventButton eventId={eventId} variant="modal" />
       </View>
-      {/* Save */}
       <Pressable
         style={[MS.squareBtn, isSaved && MS.squareBtnActive]}
         onPress={onToggleSave}
@@ -128,7 +134,6 @@ function BasicBottomBar({
           color={isSaved ? "#FFF" : C.ink}
         />
       </Pressable>
-      {/* Share */}
       <Pressable style={MS.squareBtn} onPress={onShare} hitSlop={8}>
         <Ionicons name="arrow-redo-outline" size={18} color={C.ink} />
       </Pressable>
@@ -150,6 +155,7 @@ export default function EventModal({
   isLoading = false,
   accessToken = "",
   onEventUpdated,
+  onSelectUser,
 }: EventModalProps) {
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const backdropOpac = useRef(new Animated.Value(0)).current;
@@ -199,48 +205,75 @@ export default function EventModal({
     if (!event?.id || participantsFetched) return;
     setParticipantsLoading(true);
     try {
-      const res = await fetch(`/api/Events/${event.id}/participants`, {
-        headers: {
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          "Content-Type": "application/json",
+      const res = await fetch(
+        `http://217.182.74.113:30080/api/Events/${event.id}/participants`,
+        {
+          headers: {
+            accept: "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
         },
-      });
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const raw: any[] = Array.isArray(data)
-        ? data
-        : (data.participants ?? data.items ?? []);
-      const mapped: UserListParticipant[] = raw.map((p: any) => ({
-        username: p.username ?? p.userName ?? "",
-        displayName: p.displayName ?? p.display_name ?? p.username ?? "",
-        profilePhoto: p.profilePhoto ?? p.profile_photo ?? null,
-        bio: p.bio ?? null,
-      }));
+
+      let participations: any[] = [];
+
+      if (Array.isArray(data)) {
+        participations = data;
+      } else if (data?.participations && Array.isArray(data.participations)) {
+        participations = data.participations;
+      } else if (data?.participants && Array.isArray(data.participants)) {
+        participations = data.participants;
+      } else if (data?.items && Array.isArray(data.items)) {
+        participations = data.items;
+      } else if (data?.data && Array.isArray(data.data)) {
+        participations = data.data;
+      }
+
+      const mapped: UserListParticipant[] = [];
+
+      for (const p of participations) {
+        const user = p.userSummary ?? p.user ?? p;
+        if (!user.username && !user.userName) continue;
+        mapped.push({
+          username: user.username ?? user.userName ?? "",
+          displayName:
+            user.displayName || user.display_name || user.firstName
+              ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
+              : (user.username ?? user.userName ?? ""),
+          profilePhoto: user.profilePhoto ?? user.profile_photo ?? null,
+          bio: user.bio ?? user.biography ?? null,
+        });
+      }
+
       setFullParticipants(mapped);
       setParticipantsFetched(true);
-    } catch {
-      const preview = (event?.participantsPreview ?? []).map((p: any) => ({
-        username: p.username ?? "",
-        displayName: p.displayName ?? p.username ?? "",
-        profilePhoto: p.profilePhoto ?? null,
-        bio: null,
-      }));
-      setFullParticipants(preview);
+      setParticipantsLoading(false);
+    } catch (err) {
+      console.warn("Failed to fetch participants from API, using preview", err);
+      const preview = (event?.participantsPreview ?? [])
+        .map((p: any) => ({
+          username: p.username ?? p.userName ?? "",
+          displayName:
+            p.displayName ?? p.display_name ?? p.username ?? p.userName ?? "",
+          profilePhoto: p.profilePhoto ?? p.profile_photo ?? null,
+          bio: null,
+        }))
+        .filter((p) => p.username);
+
+      setFullParticipants(preview.length > 0 ? preview : []);
       setParticipantsFetched(true);
-    } finally {
       setParticipantsLoading(false);
     }
   }, [event?.id, accessToken, participantsFetched]);
 
   const handleOpenParticipants = useCallback(() => {
-    if (
-      (event?.participantsPreview?.length ?? 0) > 0 ||
-      (event?.attendees ?? 0) > 0
-    ) {
-      setShowParticipants(true);
+    setShowParticipants(true);
+    if (!participantsFetched) {
       fetchParticipants();
     }
-  }, [event, fetchParticipants]);
+  }, [fetchParticipants, participantsFetched]);
 
   // ── Sheet animations ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -386,14 +419,13 @@ export default function EventModal({
 
   const displayParticipants: UserListParticipant[] = participantsFetched
     ? fullParticipants
-    : (event?.participantsPreview ?? []).map((p: any) => ({
+    : (event?.participantsSummary?.participantsPreview ?? []).map((p: any) => ({
         username: p.username ?? "",
         displayName: p.displayName ?? p.username ?? "",
         profilePhoto: p.profilePhoto ?? null,
         bio: null,
       }));
 
-  // Drag-to-dismiss opacity
   const dragProgress = dragY.interpolate({
     inputRange: [0, DISMISS_THRESHOLD],
     outputRange: [0, 1],
@@ -404,7 +436,6 @@ export default function EventModal({
     outputRange: [1, 0.6],
   });
 
-  // Participant mode gives a hairline left accent to the sheet
   const sheetBorderColor = isParticipant ? C.joined : "transparent";
 
   return (
@@ -429,12 +460,17 @@ export default function EventModal({
               height: MODAL_HEIGHT,
               borderTopColor: sheetBorderColor,
               borderTopWidth: isParticipant ? 2 : 0,
-              transform: [{ translateY: Animated.add(translateY, dragY) }],
+              transform: [{ translateY }],
               opacity: sheetOpacity,
             },
           ]}
         >
-          {/* Drag handle */}
+          {/*
+           * ── Drag handle (overlaid) ──────────────────────────────────────
+           * Rendered OUTSIDE the ScrollView so it always sits on top of the
+           * hero image, matching Bolt Food's pattern exactly.
+           * position: "absolute" is set in sharedS.handleRow.
+           */}
           <View
             style={sharedS.handleRow}
             onTouchStart={onTouchStart}
@@ -465,9 +501,7 @@ export default function EventModal({
                 keyboardShouldPersistTaps="handled"
               >
                 {/* ────────────────────────────────────────────────────────
-                    HERO
-                    Clean image at natural aspect ratio. No overlaid text.
-                    No image → compact neutral bar.
+                    HERO (SCROLLS WITH CONTENT)
                 ──────────────────────────────────────────────────────── */}
                 {hasImage ? (
                   <View style={MS.heroImage}>
@@ -476,13 +510,18 @@ export default function EventModal({
                       style={StyleSheet.absoluteFill}
                       resizeMode="cover"
                     />
-                    {/* Minimal dark veil at bottom edge only — legibility for the overlay close btn */}
-                    <View style={MS.heroScrimBottom} />
-                    {/* Close button */}
-                    <Pressable style={MS.closeBtn} onPress={onClose}>
-                      <Ionicons name="close" size={18} color="#FFF" />
+                    {/* Subtle bottom scrim so close button is always legible */}
+
+                    {/* Close button — white circle, top-right */}
+                    <Pressable
+                      style={MS.closeBtn}
+                      onPress={onClose}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close" size={20} color={C.ink} />
                     </Pressable>
-                    {/* Participant badge */}
+
+                    {/* Participant joined badge — bottom-left overlay */}
                     {isParticipant && (
                       <View style={MS.heroJoinedBadge}>
                         <Ionicons name="checkmark" size={11} color={C.joined} />
@@ -502,17 +541,42 @@ export default function EventModal({
                         <Text style={MS.heroJoinedText}>JOINED</Text>
                       </View>
                     )}
+                    {!isParticipant && (
+                      <Pressable
+                        style={MS.closeBtnDark}
+                        onPress={onClose}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={18} color={C.ink} />
+                      </Pressable>
+                    )}
                   </View>
                 )}
 
                 {/* ────────────────────────────────────────────────────────
                     TITLE BLOCK
-                    Category tag · Title (bold, large) · Time + label
+                    CategoryPill · Title (bold, large) · Time + label
                 ──────────────────────────────────────────────────────── */}
                 <View style={MS.titleBlock}>
-                  {/* Category chip */}
+                  {/* Category pill — Bolt Food style warm rounded chip */}
                   <View style={MS.titleTopRow}>
-                    <Tag label={event!.category} />
+                    {event?.interest ? (
+                      <InterestBadge
+                        interest={{
+                          id: event.interest.id || event.id,
+                          name: event.interest.name || event.category,
+                          label: event.interest.name || event.category,
+                          icon: event.interest.icon,
+                          color: event.interest.color,
+                        }}
+                        size="md"
+                        variant="chip"
+                        showLabel={true}
+                        showIcon={true}
+                      />
+                    ) : (
+                      <CategoryPill label={event!.category} />
+                    )}
                   </View>
 
                   {/* Title — heaviest element on screen */}
@@ -528,17 +592,18 @@ export default function EventModal({
 
                 {/* ────────────────────────────────────────────────────────
                     STATS BAR
-                    3 numbers. Raw mono weight. No backgrounds.
                 ──────────────────────────────────────────────────────── */}
                 <View style={MS.statsBar}>
                   <View style={MS.statItem}>
-                    <Text style={MS.statNum}>{event!.attendees}</Text>
+                    <Text style={MS.statNum}>
+                      {event!.participantsSummary?.currentCount ?? 0}
+                    </Text>
                     <Text style={MS.statCap}>GOING</Text>
                   </View>
                   <View style={MS.statRule} />
                   <View style={MS.statItem}>
                     <Text style={MS.statNum}>
-                      {event!.maxParticipants ?? "∞"}
+                      {event!.participantsSummary?.maxCount ?? "∞"}
                     </Text>
                     <Text style={MS.statCap}>CAPACITY</Text>
                   </View>
@@ -584,7 +649,6 @@ export default function EventModal({
                   </Text>
                 </View>
 
-                {/* ── Map (edge-to-edge within section paddings) ── */}
                 {coords && (
                   <View style={sharedS.edgeMap}>
                     <EventLocationMap
@@ -602,72 +666,88 @@ export default function EventModal({
 
                 {/* ────────────────────────────────────────────────────────
                     ATTENDING
-                    Avatar stack + count tap to open list
                 ──────────────────────────────────────────────────────── */}
                 <Pressable
-                  style={sharedS.block}
                   onPress={handleOpenParticipants}
+                  style={({ pressed }) => [
+                    MS.attendingSection,
+                    pressed && { backgroundColor: "rgba(15,23,42,0.04)" },
+                  ]}
                 >
-                  <SectionLabel>ATTENDING</SectionLabel>
-                  <View style={MS.attendRow}>
-                    {/* Avatar stack */}
-                    <View style={MS.avatarStack}>
-                      {(event!.participantsPreview ?? [])
-                        .slice(0, 4)
-                        .map((p, i) => (
+                  <View style={MS.attendingContent}>
+                    <SectionLabel>ATTENDING</SectionLabel>
+                    <View style={MS.attendRow}>
+                      <View style={MS.avatarStack}>
+                        {(
+                          event!.participantsSummary?.participantsPreview ??
+                          event!.participantsPreview ??
+                          []
+                        )
+                          .slice(0, 4)
+                          .map((p, i) => (
+                            <View
+                              key={i}
+                              style={{
+                                marginLeft: i > 0 ? -10 : 0,
+                                zIndex: 10 - i,
+                              }}
+                              pointerEvents="none"
+                            >
+                              <Avatar
+                                participant={p}
+                                size={36}
+                                borderColor={C.bg}
+                              />
+                            </View>
+                          ))}
+                        {(event!.participantsSummary?.currentCount ?? 0) >
+                          4 && (
                           <View
-                            key={i}
+                            style={[MS.overflowChip, { marginLeft: -10 }]}
+                            pointerEvents="none"
+                          >
+                            <Text style={MS.overflowText}>
+                              +
+                              {(event!.participantsSummary?.currentCount ?? 0) -
+                                4}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={{ flex: 1 }} pointerEvents="none">
+                        <Text style={MS.attendCount}>
+                          <Text
                             style={{
-                              marginLeft: i > 0 ? -10 : 0,
-                              zIndex: 10 - i,
+                              color: isParticipant ? C.joined : C.accent,
                             }}
                           >
-                            <Avatar
-                              participant={p}
-                              size={36}
-                              borderColor={C.bg}
-                            />
-                          </View>
-                        ))}
-                      {(event!.attendees ?? 0) > 4 && (
-                        <View style={[MS.overflowChip, { marginLeft: -10 }]}>
-                          <Text style={MS.overflowText}>
-                            +{event!.attendees - 4}
+                            {event!.participantsSummary?.currentCount ?? 0}
                           </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Count + spots */}
-                    <View style={{ flex: 1 }}>
-                      <Text style={MS.attendCount}>
-                        <Text
-                          style={{ color: isParticipant ? C.joined : C.accent }}
-                        >
-                          {event!.attendees}
+                          {event!.participantsSummary?.maxCount ? (
+                            <Text style={{ color: C.muted }}>
+                              /{event!.participantsSummary?.maxCount}
+                            </Text>
+                          ) : (
+                            ""
+                          )}
+                          <Text style={{ color: C.mid }}> attending</Text>
                         </Text>
-                        {event!.maxParticipants ? (
-                          <Text style={{ color: C.muted }}>
-                            /{event!.maxParticipants}
+                        {!!event!.spotsLeft && event!.spotsLeft > 0 && (
+                          <Text style={MS.spotsText}>
+                            {event!.spotsLeft} spots left
                           </Text>
-                        ) : (
-                          ""
                         )}
-                        <Text style={{ color: C.mid }}> attending</Text>
-                      </Text>
-                      {!!event!.spotsLeft && event!.spotsLeft > 0 && (
-                        <Text style={MS.spotsText}>
-                          {event!.spotsLeft} spots left
-                        </Text>
-                      )}
-                    </View>
+                      </View>
 
-                    {/* Chevron hint */}
-                    <Ionicons
-                      name="chevron-forward"
-                      size={16}
-                      color={C.muted}
-                    />
+                      <View pointerEvents="none">
+                        <Ionicons
+                          name="chevron-forward"
+                          size={16}
+                          color={C.muted}
+                        />
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
 
@@ -677,13 +757,17 @@ export default function EventModal({
                     HOST
                 ──────────────────────────────────────────────────────── */}
                 <Pressable
-                  style={MS.hostRow}
+                  style={({ pressed }) => [
+                    MS.hostRow,
+                    pressed && { backgroundColor: "rgba(15,23,42,0.04)" },
+                  ]}
                   onPress={() => {
-                    if (event!.author?.username)
+                    if (event!.author?.username) {
                       setSelectedUsername(event!.author.username);
+                      onSelectUser?.(event!.author.username);
+                    }
                   }}
                 >
-                  {/* Monogram stamp */}
                   <View style={MS.hostMonogram}>
                     <Text style={MS.hostMonogramText}>
                       {event!.author?.username?.substring(0, 2).toUpperCase() ??
@@ -731,11 +815,18 @@ export default function EventModal({
       <UserListModal
         visible={showParticipants}
         participants={displayParticipants}
-        total={event?.attendees ?? 0}
+        total={event?.participantsSummary?.currentCount ?? 0}
         isLoading={participantsLoading}
+        title="ATTENDING"
         onClose={() => setShowParticipants(false)}
         accentColor={isParticipant ? C.joined : C.accent}
-        onSelectUser={(u) => setSelectedUsername(u)}
+        onSelectUser={(u) => {
+          setShowParticipants(false);
+          setTimeout(() => {
+            onSelectUser?.(u);
+            setSelectedUsername(u);
+          }, 60);
+        }}
       />
 
       {selectedUsername !== null && (
@@ -752,51 +843,51 @@ export default function EventModal({
 
 const MS = StyleSheet.create({
   // ── Hero — image variant ──────────────────────────────────────────────────
+  // Full height, no top padding — fills from the very top of the sheet.
   heroImage: {
-    height: 260,
+    height: HERO_HEIGHT,
     width: "100%",
-    position: "relative",
     backgroundColor: C.divider,
   },
-  // Thin bottom scrim for close button legibility only — not decorative
+  // Subtle bottom scrim — just enough to make the close button legible.
   heroScrimBottom: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 80,
-    // rgba fade implemented as a View with opacity rather than LinearGradient
-    backgroundColor: "rgba(15,23,42,0.30)",
+    height: 72,
+    backgroundColor: "rgba(15,23,42,0.22)",
   },
+  // Close button floats top-right over image
   closeBtn: {
     position: "absolute",
     top: 14,
     right: H_PAD,
     width: 34,
     height: 34,
-    borderRadius: 8,
-    backgroundColor: "rgba(15,23,42,0.50)",
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.90)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   // ── Hero — no image variant ───────────────────────────────────────────────
-  // Flat, light, neutral — does NOT look bad without an image
   heroPlain: {
-    height: 16,
+    height: 52, // enough room for the overlaid handle + close btn
     backgroundColor: C.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.divider,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "flex-end",
     paddingHorizontal: H_PAD,
+    paddingBottom: 8,
     gap: 8,
   },
   closeBtnDark: {
     width: 34,
     height: 34,
-    borderRadius: 8,
+    borderRadius: 17,
     backgroundColor: "rgba(15,23,42,0.06)",
     borderWidth: 1,
     borderColor: C.divider,
@@ -804,17 +895,20 @@ const MS = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // Joined badge — sits next to close btn
+  // Joined badge — overlaid bottom-left on hero image
   heroJoinedBadge: {
+    position: "absolute",
+    bottom: 12,
+    left: H_PAD,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: C.joined,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
   heroJoinedText: {
     fontSize: 10,
@@ -835,19 +929,7 @@ const MS = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
-  distanceBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  distanceText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: C.green,
-    letterSpacing: 0.2,
-  },
 
-  // Street-heavy title — large, tight, near-black
   title: {
     fontSize: 28,
     fontWeight: "900",
@@ -858,7 +940,6 @@ const MS = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // Time row — lightweight
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -894,7 +975,6 @@ const MS = StyleSheet.create({
     alignItems: "center",
     gap: 3,
   },
-  // Mono-weight large number
   statNum: {
     fontSize: 20,
     fontWeight: "900",
@@ -916,15 +996,27 @@ const MS = StyleSheet.create({
   },
 
   // ── Attending ─────────────────────────────────────────────────────────────
+  attendingSection: {
+    width: "100%",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+  },
+  attendingContent: {
+    paddingHorizontal: H_PAD,
+    paddingVertical: 14,
+  },
   attendRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginTop: 2,
+    gap: 10,
+    marginTop: 10,
   },
   avatarStack: {
     flexDirection: "row",
     alignItems: "center",
+    marginRight: 4,
   },
   overflowChip: {
     width: 36,
@@ -942,10 +1034,11 @@ const MS = StyleSheet.create({
     color: C.mid,
   },
   attendCount: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: C.ink,
     letterSpacing: -0.2,
+    lineHeight: 18,
   },
   spotsText: {
     fontSize: 12,

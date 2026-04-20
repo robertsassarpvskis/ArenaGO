@@ -19,6 +19,7 @@ export interface Event {
       a: number;
     };
   };
+  customInterestName: string | null;
   author: {
     username: string;
     displayName: string;
@@ -31,7 +32,15 @@ export interface Event {
   participantsSummary: {
     maxCount: number | null;
     currentCount: number;
-    participantsPreview: any[];
+    participantsPreview: Array<{
+      username: string;
+      displayName: string;
+      profilePhoto: {
+        id: string;
+        url: string;
+        contentType: string;
+      } | null;
+    }>;
   };
   locationName: string;
   location: {
@@ -41,6 +50,10 @@ export interface Event {
   createdAt: string;
   startScheduledTo: string;
   endScheduledTo: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  canceledAt: string | null;
+  deletedAt: string | null;
 }
 
 const API_BASE_URL = "http://217.182.74.113:30080";

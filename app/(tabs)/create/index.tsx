@@ -1,4 +1,3 @@
-// app/(tabs)/events/create.tsx
 import { QuickDateTime } from "@/components/ui/datetime/QuickDateTime";
 import InputDescription from "@/components/ui/inputs/input-description";
 import { useAuth } from "@/hooks/context/AuthContext";
@@ -69,17 +68,14 @@ const FALLBACK_CATEGORIES: CategoryOption[] = [
   { id: "3", label: "Networking", color: { r: 16, g: 185, b: 129, a: 1 } },
   { id: "4", label: "Workshop", color: { r: 245, g: 158, b: 11, a: 1 } },
   { id: "5", label: "Social", color: { r: 99, g: 102, b: 241, a: 1 } },
-  { id: "custom", label: "Custom", color: { r: 80, g: 80, b: 80, a: 1 } },
 ];
 
-// Per-label icons for the category card grid
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Sports: "football-outline",
   Music: "musical-notes-outline",
   Networking: "people-outline",
   Workshop: "construct-outline",
   Social: "happy-outline",
-  Custom: "pencil-outline",
 };
 
 const PARTICIPANT_PRESETS = ["5", "10", "15", "20", "30", "50"];
@@ -115,7 +111,8 @@ export default function CreateEvent() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [maxParticipants, setMaxParticipants] = useState("");
   const [customParticipants, setCustomParticipants] = useState("");
-  const [customCategoryText, setCustomCategoryText] = useState(""); // always visible
+  const [customCategoryText, setCustomCategoryText] = useState("");
+  const [useCustomCategory, setUseCustomCategory] = useState(false);
   const [eventImage, setEventImage] = useState<{
     uri: string;
     type: string;
@@ -145,6 +142,7 @@ export default function CreateEvent() {
   // Animated
   const titleFocusAnim = useRef(new Animated.Value(0)).current;
   const customCatFocusAnim = useRef(new Animated.Value(0)).current;
+  const customToggleAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchInterests(user?.accessToken || null).then((res) => {
@@ -152,24 +150,43 @@ export default function CreateEvent() {
     });
   }, [user?.accessToken]);
 
+  // Animate custom category panel in/out
+  useEffect(() => {
+    Animated.spring(customToggleAnim, {
+      toValue: useCustomCategory ? 1 : 0,
+      useNativeDriver: false,
+      tension: 140,
+      friction: 18,
+    }).start();
+
+    // When toggling off custom, clear the text and restore category selection
+    if (!useCustomCategory) {
+      setCustomCategoryText("");
+    }
+    // When toggling on custom, clear the selected preset category
+    if (useCustomCategory) {
+      setCategory("");
+    }
+  }, [useCustomCategory]);
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const displayCategories =
     categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const selectedCat = displayCategories.find((c) => c.id === category);
-  const isCustomSelected = category === "custom";
+
   const isLastStep = currentStep === STEPS.length - 1;
 
   const canAdvanceStep = () => {
     if (currentStep === 0) {
       if (!eventTitle.trim()) return false;
-      const hasCat = category !== "" && !isCustomSelected;
-      const hasCustom =
-        isCustomSelected && customCategoryText.trim().length > 0;
-      const typedCustom =
-        category === "" && customCategoryText.trim().length > 0;
-      if (!hasCat && !hasCustom && !typedCustom) return false;
-      return true;
+      if (useCustomCategory) {
+        // Custom mode: must have typed a tag
+        return customCategoryText.trim().length > 0;
+      } else {
+        // Preset mode: must have selected a category
+        return category !== "";
+      }
     }
     if (currentStep === 1) return dateTimeSelection !== null;
     if (currentStep === 2) return location !== null;
@@ -178,9 +195,9 @@ export default function CreateEvent() {
 
   const canCreate = !!(
     eventTitle.trim() &&
-    (!isCustomSelected && category
-      ? true
-      : customCategoryText.trim().length > 0) &&
+    (useCustomCategory
+      ? customCategoryText.trim().length > 0
+      : category !== "") &&
     dateTimeSelection &&
     location &&
     !loading
@@ -319,10 +336,12 @@ export default function CreateEvent() {
     const payload: CreateEventPayload = {
       title: eventTitle.trim(),
       description: description.trim() || undefined,
-      // Only pass a real interestId if a non-custom category is selected
-      interestId: !isCustomSelected && category ? category : "",
-      // Pass customInterestName whenever the user typed something in the custom field
-      customInterestName: customCategoryText.trim() || undefined,
+      // Mutually exclusive: either a real interestId OR a customInterestName — never both
+      interestId: !useCustomCategory && category ? category : undefined,
+      customInterestName:
+        useCustomCategory && customCategoryText.trim()
+          ? customCategoryText.trim()
+          : undefined,
       maxParticipants: maxParticipants ? Number(maxParticipants) : undefined,
       thumbnailUploadRequest: eventImage || null,
       locationName:
@@ -407,228 +426,283 @@ export default function CreateEvent() {
           <Text style={styles.charCount}>{eventTitle.length} / 60</Text>
         </View>
 
-        {/* ── Category — dropdown with card grid inside ── */}
+        {/* ── Mode toggle: Preset vs Custom ── */}
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Category</Text>
-
-          <TouchableOpacity
-            style={[
-              styles.dropdownTrigger,
-              categoryDropdownOpen && styles.dropdownTriggerOpen,
-            ]}
-            onPress={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-            activeOpacity={0.8}
-          >
-            {selectedCat ? (
-              <View style={styles.dropdownTriggerContent}>
-                {selectedCat.icon?.url ? (
-                  <SvgUri
-                    uri={selectedCat.icon.url}
-                    width={15}
-                    height={15}
-                    color={C.text}
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.dropdownDot,
-                      { backgroundColor: rgbaToString(selectedCat.color) },
-                    ]}
-                  />
-                )}
-                <Text style={styles.dropdownTriggerText}>
-                  {selectedCat.label}
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.dropdownTriggerPlaceholder}>
-                Select a category
+          <View style={styles.modeToggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.modeToggleBtn,
+                !useCustomCategory && styles.modeToggleBtnActive,
+              ]}
+              onPress={() => setUseCustomCategory(false)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="grid-outline"
+                size={13}
+                color={!useCustomCategory ? "#fff" : C.textMuted}
+              />
+              <Text
+                style={[
+                  styles.modeToggleBtnText,
+                  !useCustomCategory && styles.modeToggleBtnTextActive,
+                ]}
+              >
+                Preset
               </Text>
-            )}
-            <Ionicons
-              name={categoryDropdownOpen ? "chevron-up" : "chevron-down"}
-              size={15}
-              color={C.textMuted}
-            />
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modeToggleBtn,
+                useCustomCategory && styles.modeToggleBtnActive,
+              ]}
+              onPress={() => setUseCustomCategory(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="pencil-outline"
+                size={13}
+                color={useCustomCategory ? "#fff" : C.textMuted}
+              />
+              <Text
+                style={[
+                  styles.modeToggleBtnText,
+                  useCustomCategory && styles.modeToggleBtnTextActive,
+                ]}
+              >
+                Custom
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-          {categoryDropdownOpen && (
-            <View style={styles.dropdownPanel}>
-              {/* Inline search */}
-              <View style={styles.dropdownSearch}>
-                <Ionicons name="search-outline" size={14} color={C.textMuted} />
-                <TextInput
-                  style={styles.dropdownSearchInput}
-                  value={categorySearch}
-                  onChangeText={setCategorySearch}
-                  placeholder="Search..."
-                  placeholderTextColor={C.textMuted}
-                  returnKeyType="done"
-                />
-                {categorySearch.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setCategorySearch("")}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons
-                      name="close-circle"
-                      size={14}
-                      color={C.textMuted}
+        {/* ── Preset category dropdown ── */}
+        {!useCustomCategory && (
+          <View style={styles.inputGroup}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownTrigger,
+                categoryDropdownOpen && styles.dropdownTriggerOpen,
+              ]}
+              onPress={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+              activeOpacity={0.8}
+            >
+              {selectedCat ? (
+                <View style={styles.dropdownTriggerContent}>
+                  {selectedCat.icon?.url ? (
+                    <SvgUri
+                      uri={selectedCat.icon.url}
+                      width={15}
+                      height={15}
+                      color={C.text}
                     />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {filtered.length === 0 ? (
-                <View style={styles.dropdownEmpty}>
-                  <Text style={styles.dropdownEmptyText}>Nothing found</Text>
+                  ) : (
+                    <View
+                      style={[
+                        styles.dropdownDot,
+                        { backgroundColor: rgbaToString(selectedCat.color) },
+                      ]}
+                    />
+                  )}
+                  <Text style={styles.dropdownTriggerText}>
+                    {selectedCat.label}
+                  </Text>
                 </View>
               ) : (
-                <View style={styles.catGrid}>
-                  {filtered.map((cat) => {
-                    const colorStr = rgbaToString(cat.color);
-                    const isSelected = category === cat.id;
-                    const iconName = cat.icon?.url
-                      ? null
-                      : (CATEGORY_ICONS[cat.label] ?? "grid-outline");
-                    return (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.catCard,
-                          isSelected && {
-                            borderColor: colorStr,
-                            backgroundColor: `${colorStr}14`,
-                          },
-                        ]}
-                        onPress={() => {
-                          setCategory(isSelected ? "" : cat.id);
-                          setCategoryDropdownOpen(false);
-                          setCategorySearch("");
-                        }}
-                        activeOpacity={0.75}
-                      >
-                        <View
+                <Text style={styles.dropdownTriggerPlaceholder}>
+                  Select a category
+                </Text>
+              )}
+              <Ionicons
+                name={categoryDropdownOpen ? "chevron-up" : "chevron-down"}
+                size={15}
+                color={C.textMuted}
+              />
+            </TouchableOpacity>
+
+            {categoryDropdownOpen && (
+              <View style={styles.dropdownPanel}>
+                <View style={styles.dropdownSearch}>
+                  <Ionicons
+                    name="search-outline"
+                    size={14}
+                    color={C.textMuted}
+                  />
+                  <TextInput
+                    style={styles.dropdownSearchInput}
+                    value={categorySearch}
+                    onChangeText={setCategorySearch}
+                    placeholder="Search..."
+                    placeholderTextColor={C.textMuted}
+                    returnKeyType="done"
+                  />
+                  {categorySearch.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setCategorySearch("")}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={14}
+                        color={C.textMuted}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {filtered.length === 0 ? (
+                  <View style={styles.dropdownEmpty}>
+                    <Text style={styles.dropdownEmptyText}>Nothing found</Text>
+                  </View>
+                ) : (
+                  <View style={styles.catGrid}>
+                    {filtered.map((cat) => {
+                      const colorStr = rgbaToString(cat.color);
+                      const isSelected = category === cat.id;
+                      const iconName = cat.icon?.url
+                        ? null
+                        : (CATEGORY_ICONS[cat.label] ?? "grid-outline");
+                      return (
+                        <TouchableOpacity
+                          key={cat.id}
                           style={[
-                            styles.catCardIcon,
-                            {
-                              backgroundColor: isSelected
-                                ? colorStr
-                                : C.surfaceAlt,
-                            },
-                          ]}
-                        >
-                          {cat.icon?.url ? (
-                            <SvgUri
-                              uri={cat.icon.url}
-                              width={17}
-                              height={17}
-                              color={isSelected ? "#fff" : colorStr}
-                            />
-                          ) : (
-                            <Ionicons
-                              name={iconName!}
-                              size={16}
-                              color={isSelected ? "#fff" : colorStr}
-                            />
-                          )}
-                        </View>
-                        <Text
-                          style={[
-                            styles.catCardLabel,
+                            styles.catCard,
                             isSelected && {
-                              color: colorStr,
-                              fontWeight: "700",
+                              borderColor: colorStr,
+                              backgroundColor: `${colorStr}14`,
                             },
                           ]}
+                          onPress={() => {
+                            setCategory(isSelected ? "" : cat.id);
+                            setCategoryDropdownOpen(false);
+                            setCategorySearch("");
+                          }}
+                          activeOpacity={0.75}
                         >
-                          {cat.label}
-                        </Text>
-                        {isSelected && (
                           <View
                             style={[
-                              styles.catCardCheck,
-                              { backgroundColor: colorStr },
+                              styles.catCardIcon,
+                              {
+                                backgroundColor: isSelected
+                                  ? colorStr
+                                  : C.surfaceAlt,
+                              },
                             ]}
                           >
-                            <Ionicons name="checkmark" size={8} color="#fff" />
+                            {cat.icon?.url ? (
+                              <SvgUri
+                                uri={cat.icon.url}
+                                width={17}
+                                height={17}
+                                color={isSelected ? "#fff" : colorStr}
+                              />
+                            ) : (
+                              <Ionicons
+                                name={iconName!}
+                                size={16}
+                                color={isSelected ? "#fff" : colorStr}
+                              />
+                            )}
                           </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* ── Custom category — always visible from the start ── */}
-        <View style={styles.inputGroup}>
-          <View style={styles.customCatLabelRow}>
-            <Text style={styles.inputLabel}>Your own tag</Text>
-            <Text style={styles.customCatLabelNote}>
-              {isCustomSelected ? "required for Custom" : "optional"}
-            </Text>
-          </View>
-          <Animated.View
-            style={[
-              styles.customCatWrapper,
-              {
-                borderColor: customCatFocusAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [C.border, C.borderMid],
-                }),
-              },
-            ]}
-          >
-            <Ionicons
-              name="pricetag-outline"
-              size={14}
-              color={customCategoryText ? C.coral : C.textMuted}
-              style={{ marginLeft: 14 }}
-            />
-            <TextInput
-              style={styles.customCatInput}
-              value={customCategoryText}
-              onChangeText={setCustomCategoryText}
-              placeholder="e.g. Skate session, Rooftop yoga..."
-              placeholderTextColor={C.textMuted}
-              maxLength={40}
-              onFocus={() =>
-                Animated.timing(customCatFocusAnim, {
-                  toValue: 1,
-                  duration: 160,
-                  useNativeDriver: false,
-                }).start()
-              }
-              onBlur={() =>
-                Animated.timing(customCatFocusAnim, {
-                  toValue: 0,
-                  duration: 160,
-                  useNativeDriver: false,
-                }).start()
-              }
-            />
-            {customCategoryText.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setCustomCategoryText("")}
-                style={{ marginRight: 12 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </TouchableOpacity>
+                          <Text
+                            style={[
+                              styles.catCardLabel,
+                              isSelected && {
+                                color: colorStr,
+                                fontWeight: "700",
+                              },
+                            ]}
+                          >
+                            {cat.label}
+                          </Text>
+                          {isSelected && (
+                            <View
+                              style={[
+                                styles.catCardCheck,
+                                { backgroundColor: colorStr },
+                              ]}
+                            >
+                              <Ionicons
+                                name="checkmark"
+                                size={8}
+                                color="#fff"
+                              />
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
             )}
-          </Animated.View>
-          {customCategoryText.length > 0 && (
-            <View style={styles.customTagPreview}>
-              <View style={styles.customTagDot} />
-              <Text style={styles.customTagPreviewText}>
-                "{customCategoryText}"
-              </Text>
-            </View>
-          )}
-        </View>
+          </View>
+        )}
+
+        {/* ── Custom category input ── */}
+        {useCustomCategory && (
+          <View style={styles.inputGroup}>
+            <Animated.View
+              style={[
+                styles.customCatWrapper,
+                {
+                  borderColor: customCatFocusAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [C.border, C.borderMid],
+                  }),
+                },
+              ]}
+            >
+              <Ionicons
+                name="pricetag-outline"
+                size={14}
+                color={customCategoryText ? C.coral : C.textMuted}
+                style={{ marginLeft: 14 }}
+              />
+              <TextInput
+                style={styles.customCatInput}
+                value={customCategoryText}
+                onChangeText={setCustomCategoryText}
+                placeholder="e.g. Skate session, Rooftop yoga..."
+                placeholderTextColor={C.textMuted}
+                maxLength={40}
+                autoFocus
+                onFocus={() =>
+                  Animated.timing(customCatFocusAnim, {
+                    toValue: 1,
+                    duration: 160,
+                    useNativeDriver: false,
+                  }).start()
+                }
+                onBlur={() =>
+                  Animated.timing(customCatFocusAnim, {
+                    toValue: 0,
+                    duration: 160,
+                    useNativeDriver: false,
+                  }).start()
+                }
+              />
+              {customCategoryText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setCustomCategoryText("")}
+                  style={{ marginRight: 12 }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={16} color={C.textMuted} />
+                </TouchableOpacity>
+              )}
+            </Animated.View>
+            {customCategoryText.length > 0 && (
+              <View style={styles.customTagPreview}>
+                <View style={styles.customTagDot} />
+                <Text style={styles.customTagPreviewText}>
+                  "{customCategoryText}"
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -920,7 +994,7 @@ export default function CreateEvent() {
   );
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // STEP 4 — Cover (fully redesigned)
+  // STEP 4 — Cover
   // ─────────────────────────────────────────────────────────────────────────────
   const renderCover = () => (
     <View style={styles.stepBody}>
@@ -937,13 +1011,10 @@ export default function CreateEvent() {
             style={styles.coverPreviewImage}
             resizeMode="cover"
           />
-          {/* Bottom scrim */}
           <View style={styles.coverPreviewScrim} />
-          {/* Urban COVER tag */}
           <View style={styles.coverCornerTag}>
             <Text style={styles.coverCornerTagText}>COVER</Text>
           </View>
-          {/* Action buttons floating bottom-right */}
           <View style={styles.coverActionsRow}>
             <TouchableOpacity
               style={styles.coverActionBtn}
@@ -969,12 +1040,10 @@ export default function CreateEvent() {
           onPress={pickImage}
           activeOpacity={0.8}
         >
-          {/* Urban corner brackets */}
           <View style={[styles.cornerBracket, styles.cornerTL]} />
           <View style={[styles.cornerBracket, styles.cornerTR]} />
           <View style={[styles.cornerBracket, styles.cornerBL]} />
           <View style={[styles.cornerBracket, styles.cornerBR]} />
-
           <View style={styles.coverUploadInner}>
             <View style={styles.coverUploadIcon}>
               <Ionicons name="image-outline" size={26} color={C.textMuted} />
@@ -987,7 +1056,6 @@ export default function CreateEvent() {
         </TouchableOpacity>
       )}
 
-      {/* Tip rows */}
       <View style={styles.coverTips}>
         <View style={styles.coverTipRow}>
           <Ionicons name="eye-outline" size={13} color={C.textMuted} />
@@ -1038,7 +1106,7 @@ export default function CreateEvent() {
         />
       </View>
 
-      {/* ── Step indicators — icon pills + connector lines ── */}
+      {/* ── Step indicators ── */}
       <View style={styles.stepRow}>
         {STEPS.map((s, i) => {
           const done = i < currentStep;
@@ -1151,7 +1219,9 @@ export default function CreateEvent() {
             {currentStep === 0
               ? !eventTitle.trim()
                 ? "Enter an event name to continue"
-                : "Pick a category or type your own tag"
+                : useCustomCategory
+                  ? "Type your custom tag to continue"
+                  : "Pick a category to continue"
               : "Complete the step above to continue"}
           </Text>
         )}
@@ -1303,6 +1373,31 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
+  // ── Mode toggle
+  modeToggleRow: {
+    flexDirection: "row",
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  modeToggleBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  modeToggleBtnActive: { backgroundColor: C.ink },
+  modeToggleBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: C.textMuted,
+  },
+  modeToggleBtnTextActive: { color: "#fff" },
+
   // ── Category dropdown trigger
   dropdownTrigger: {
     flexDirection: "row",
@@ -1399,19 +1494,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // ── Custom category — always visible
-  customCatLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  customCatLabelNote: {
-    fontSize: 10,
-    fontWeight: "500",
-    color: C.textMuted,
-    letterSpacing: 0.2,
-  },
+  // ── Custom category
   customCatWrapper: {
     flexDirection: "row",
     alignItems: "center",
@@ -1649,7 +1732,6 @@ const styles = StyleSheet.create({
   },
   coverActionBtnDanger: { backgroundColor: "rgba(229,57,53,0.82)" },
   coverActionBtnText: { fontSize: 12, fontWeight: "700", color: "#fff" },
-
   coverUploadZone: {
     height: 200,
     borderRadius: 16,
@@ -1681,8 +1763,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   coverUploadSub: { fontSize: 12, fontWeight: "400", color: C.textMuted },
-
-  // Corner bracket decoration
   cornerBracket: {
     position: "absolute",
     width: 18,
@@ -1717,7 +1797,6 @@ const styles = StyleSheet.create({
     borderRightWidth: 2,
     borderBottomRightRadius: 4,
   },
-
   coverTips: { gap: 7 },
   coverTipRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   coverTipText: { fontSize: 12, fontWeight: "400", color: C.textMuted },

@@ -37,30 +37,39 @@ export function useParticipatedEvents(
         },
       );
 
-      // Log so we can see the real shape
-      console.log(
-        "Participated events raw response:",
-        JSON.stringify(response.data, null, 2),
-      );
-
       // Handle both a plain array and common wrapper shapes
       let events: ParticipatedEvent[] = [];
+
       if (Array.isArray(response.data)) {
+        // Direct array response
         events = response.data;
       } else if (Array.isArray(response.data?.items)) {
+        // Wrapped in .items
         events = response.data.items;
       } else if (Array.isArray(response.data?.data)) {
+        // Wrapped in .data
         events = response.data.data;
       } else if (Array.isArray(response.data?.events)) {
+        // Wrapped in .events
         events = response.data.events;
+      } else if (Array.isArray(response.data?.participations)) {
+        // Wrapped in .participations (API returns participation objects with resourceSummary)
+        events = response.data.participations.map((p: any) => ({
+          eventId: p.resourceSummary?.eventId || p.eventId,
+          eventName:
+            p.resourceSummary?.eventName || p.eventName || "Unknown Event",
+          ...p.resourceSummary,
+          ...p,
+        }));
       } else {
         console.warn(
           "Unexpected participated-events response shape:",
           response.data,
         );
+        events = [];
       }
 
-      const ids = new Set(events.map((e) => e.eventId));
+      const ids = new Set(events.map((e) => e.eventId).filter(Boolean));
       setParticipatedEventIds(ids);
     } catch (err: any) {
       console.error(

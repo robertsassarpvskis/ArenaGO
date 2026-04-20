@@ -1,4 +1,3 @@
-// hooks/events/useEventsCreate.ts
 import axios from "axios";
 import { useState } from "react";
 
@@ -50,12 +49,11 @@ export function useCreateEvent(token: string | null) {
       );
       formData.append("StartScheduledTo", payload.startScheduledTo);
 
-      // ── Interest: real ID takes priority, custom name is the fallback ────────
-      // Both can coexist (e.g. "Music" + "Jazz night sub-tag)
-      if (payload.interestId) {
-        formData.append("InterestId", payload.interestId);
-      }
-      if (payload.customInterestName?.trim()) {
+      // ── Interest: mutually exclusive — either a real InterestId OR a custom name
+      // Never send both; sending InterestId alongside CustomInterestName causes 400
+      if (payload.interestId && payload.interestId.trim()) {
+        formData.append("InterestId", payload.interestId.trim());
+      } else if (payload.customInterestName?.trim()) {
         formData.append(
           "CustomInterestName",
           payload.customInterestName.trim(),
@@ -94,7 +92,6 @@ export function useCreateEvent(token: string | null) {
       const response = await axios.post(API_URL, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
           Accept: "application/json",
         },
       });

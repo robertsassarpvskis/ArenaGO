@@ -1,5 +1,6 @@
 // app/(tabs)/MyProfileScreen.tsx
 
+import UserListModal from "@/app/modal/UserListModal";
 import ProfileBase, {
   C,
   Interest,
@@ -7,23 +8,57 @@ import ProfileBase, {
   SocialLink,
 } from "@/components/layout/ProfileBase";
 import { useAuth } from "@/hooks/context/AuthContext";
-import { useProfile } from "@/hooks/profile/useProfile";
+import { useFollowersFollowing } from "@/hooks/profile/useFollowersFollowing";
+import {
+  useParticipatedEventsFull,
+  useProfile,
+} from "@/hooks/profile/useProfile";
+import { useHapticFeedback } from "@/hooks/useHapticFeedback";
 import { LogOut } from "lucide-react-native";
 import React, { useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function MyProfileScreen() {
   const { user, logout } = useAuth();
+  const { impact, notification } = useHapticFeedback();
+
   const { profile, refetch } = useProfile(
     user?.userName ?? "",
     user?.accessToken,
   );
+
+  // ── Real participated events ───────────────────────────────────────────────
+  const { events: participatedEvents } = useParticipatedEventsFull(
+    user?.userName ?? "",
+    user?.accessToken,
+    6, // show up to 6 cards in the activity section
+  );
+
+  const {
+    followers: listFollowers,
+    following: listFollowing,
+    followersTotal,
+    followingTotal,
+    isLoading: isLoadingList,
+    fetchFollowers,
+    fetchFollowing,
+    reset: resetList,
+  } = useFollowersFollowing();
+
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── Modal state ────────────────────────────────────────────────────────────
+  const [listModalVisible, setListModalVisible] = useState(false);
+  const [listModalType, setListModalType] = useState<"followers" | "following">(
+    "followers",
+  );
+
   const handleRefresh = async () => {
+    await impact("medium");
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
+    await notification("success");
   };
 
   const handleLogout = () => {
@@ -42,27 +77,44 @@ export default function MyProfileScreen() {
     );
   };
 
+  const handleFollowersPress = async () => {
+    setListModalType("followers");
+    setListModalVisible(true);
+    await fetchFollowers(user?.userName ?? "");
+  };
+
+  const handleFollowingPress = async () => {
+    setListModalType("following");
+    setListModalVisible(true);
+    await fetchFollowing(user?.userName ?? "");
+  };
+
+  const handleListModalClose = () => {
+    setListModalVisible(false);
+    resetList();
+  };
+
+  const handleSelectUser = (selectedUsername: string) => {
+    console.log("Selected user:", selectedUsername);
+    // TODO: navigate to UserProfileScreen
+  };
+
+  // ── Derived values ─────────────────────────────────────────────────────────
   const firstName = profile?.firstName ?? "Alex";
   const lastName = profile?.lastName ?? "Rivers";
   const username = user?.userName ?? "alex_rivers";
 
-  // ── Mock data — replace with real API data ─────────────────────────────────
-
   const MOCK_PHOTOS: string[] = [
     profile?.profilePhoto?.url ?? "",
-    // Add more photo URLs here — e.g. from a photos[] field in profile
-    // "https://example.com/photo2.jpg",
-    // "https://example.com/photo3.jpg",
   ].filter(Boolean);
 
-  const MOCK_INTERESTS: Interest[] = [
-    { id: "basketball", label: "Basketball" },
-    { id: "yoga", label: "Yoga" },
-    { id: "running", label: "Running" },
-    { id: "tennis", label: "Tennis" },
-    { id: "cycling", label: "Cycling" },
-    { id: "coffee", label: "Coffee" },
-  ];
+  const userInterests: Interest[] = (profile?.interests ?? []).map(
+    (interest) => ({
+      id: interest.id,
+      label: interest.label,
+      icon: interest.icon,
+    }),
+  );
 
   const MOCK_SOCIAL: SocialLink[] = [
     { platform: "instagram", handle: "alex.rivers" },
@@ -70,51 +122,38 @@ export default function MyProfileScreen() {
     { platform: "twitter", handle: "alex_rivers" },
   ];
 
-  const MOCK_EVENTS: ProfileEvent[] = [
-    {
-      id: 1,
-      icon: "🏀",
-      name: "Morning Basketball",
-      date: "JAN 18",
-      time: "09:00",
-      participants: 12,
-      maxParticipants: 16,
-      category: "sport",
-    },
-    {
-      id: 2,
-      icon: "🧘",
-      name: "Sunset Yoga",
-      date: "JAN 15",
-      time: "18:30",
-      participants: 8,
-      maxParticipants: 10,
-      category: "sport",
-    },
-    {
-      id: 3,
-      icon: "🏃",
-      name: "5K Run Challenge",
-      date: "JAN 12",
-      time: "07:00",
-      participants: 24,
-      maxParticipants: 30,
-      category: "sport",
-    },
-    {
-      id: 4,
-      icon: "☕",
-      name: "Coffee Meetup",
-      date: "JAN 10",
-      time: "10:00",
-      participants: 6,
-      maxParticipants: 8,
-      category: "social",
-    },
-  ];
+  // ── Map participatedEvents → ProfileEvent shape for ProfileBase ────────────
+  // ProfileBase.recentEvents uses the ProfileEvent type (icon, name, date, etc.)
+  // We map our real data into that shape so ProfileBase renders MyEventCard correctly.
+  const recentEvents: ProfileEvent[] = participatedEvents.map((ev) => ({
+    id: ev.eventId as any,
+    icon: "📍",
+    name: ev.title,
+    // ProfileEvent.date is a display string — format from ISO
+    date: ev.startScheduledTo
+      ? new Date(ev.startScheduledTo).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }).toUpperCase()
+      : "TBD",
+    time: ev.startScheduledTo
+      ? new Date(ev.startScheduledTo).toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : "",
+    participants: ev.currentCount,
+    maxParticipants: ev.maxCount,
+    category: "sport", // fallback — categoryName is passed separately via locationName hack
+    // We attach extra data as non-standard fields for the MyEventCard renderer
+    _startScheduledTo: ev.startScheduledTo,
+    _locationName: ev.locationName,
+    _categoryName: ev.categoryName,
+    _kind: "participated" as const,
+  }));
 
   // ── Footer ─────────────────────────────────────────────────────────────────
-
   const signOutFooter = (
     <View style={footer.wrap}>
       <TouchableOpacity
@@ -130,43 +169,55 @@ export default function MyProfileScreen() {
   );
 
   return (
-    <ProfileBase
-      mode="own"
-      firstName={firstName}
-      lastName={lastName}
-      username={username}
-      // Photo carousel — pass array; falls back to single photoUrl if only 1
-      photos={MOCK_PHOTOS.length > 0 ? MOCK_PHOTOS : undefined}
-      photoUrl={profile?.profilePhoto?.url}
-      bio={profile?.bio}
-      // Interests with icons
-      interests={MOCK_INTERESTS}
-      // Social badges shown in hero
-      socialLinks={MOCK_SOCIAL}
-      preferredLanguages={profile?.preferredLanguages ?? ["EN", "LV"]}
-      locationLabel="Riga, LV"
-      memberSince="MAR 2024"
-      responseRate={92}
-      followingCount={profile?.followingCount ?? 148}
-      followerCount={profile?.followerCount ?? 312}
-      participatedEventsCount={profile?.participatedEventsCount ?? 47}
-      recentEvents={MOCK_EVENTS}
-      refreshing={refreshing}
-      onRefresh={handleRefresh}
-      onEditPress={() => {
-        /* TODO: navigate to EditProfileScreen */
-      }}
-      onSharePress={() => {
-        /* TODO: share profile link */
-      }}
-      onClosePress={() => {
-        /* own wall — no-op */
-      }}
-      onSeeAllActivityPress={() => {
-        /* TODO: navigate to activity feed */
-      }}
-      footer={signOutFooter}
-    />
+    <>
+      <ProfileBase
+        mode="own"
+        firstName={firstName}
+        lastName={lastName}
+        username={username}
+        photos={MOCK_PHOTOS.length > 0 ? MOCK_PHOTOS : undefined}
+        photoUrl={profile?.profilePhoto?.url}
+        bio={profile?.bio}
+        interests={userInterests}
+        socialLinks={MOCK_SOCIAL}
+        preferredLanguages={profile?.preferredLanguages ?? ["EN", "LV"]}
+        locationLabel="Riga, LV"
+        memberSince="MAR 2024"
+        followingCount={profile?.followingCount ?? 148}
+        followerCount={profile?.followerCount ?? 312}
+        participatedEventsCount={profile?.participatedEventsCount ?? 47}
+        recentEvents={recentEvents}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        onFollowersPress={handleFollowersPress}
+        onFollowingPress={handleFollowingPress}
+        onEditPress={() => {
+          /* TODO: navigate to EditProfileScreen */
+        }}
+        onSharePress={() => {
+          /* TODO: share profile link */
+        }}
+        onClosePress={() => {
+          /* own wall — no-op */
+        }}
+        onSeeAllActivityPress={() => {
+          /* TODO: navigate to activity feed */
+        }}
+        footer={signOutFooter}
+      />
+
+      <UserListModal
+        visible={listModalVisible}
+        onClose={handleListModalClose}
+        participants={
+          listModalType === "followers" ? listFollowers : listFollowing
+        }
+        total={listModalType === "followers" ? followersTotal : followingTotal}
+        isLoading={isLoadingList}
+        title={listModalType === "followers" ? "FOLLOWERS" : "FOLLOWING"}
+        onSelectUser={handleSelectUser}
+      />
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 // app/(tabs)/index.tsx — EventScreen (urban street minimal)
 
 import { Container } from "@/components/common/Container";
+import MyEventCard from "@/components/common/event/cards/MyEventCard";
 import { useAuth } from "@/hooks/context/AuthContext";
 import { useJoinEvent } from "@/hooks/events/useEventJoin";
 import { LikedEventItem, useEventSave } from "@/hooks/events/useEventSave";
@@ -8,22 +9,22 @@ import {
   getUserParticipatedEvents,
   Participation,
 } from "@/hooks/events/useParticipatedEvents";
+import { useHapticFeedback } from "@/hooks/useHapticFeedback";
 import { useLocation } from "@/hooks/useLocation";
+import { getTimeLabel, formatEventTime } from "@/scripts/timeUtils";
 import { BlurView } from "expo-blur";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Platform,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import EventCard from "../../components/common/event/EventCard";
+import EventCard from "../../components/common/event/cards/EventCard";
 import FeedHeader from "../../components/layout/ModernHeader";
 import {
   Event as ApiEvent,
@@ -46,25 +47,13 @@ const BASE_URL = "http://217.182.74.113:30080";
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
   accent: "#FF6B58",
-  accentLight: "#FF8A73",
   joined: "#059669",
-  joinedLight: "#10B981",
-  green: "#10B981",
-  amber: "#F59E0B",
-  red: "#EF4444",
-  blue: "#3B82F6",
-  purple: "#8B5CF6",
   ink: "#0F172A",
   mid: "#64748B",
   muted: "#94A3B8",
-  divider: "#E2E8F0",
   bg: "#F8F7F2",
   card: "#FFFFFF",
-  overlay: "rgba(15,23,42,0.65)",
 } as const;
-
-const ACCENT_BG = "rgba(255,107,88,0.12)";
-const JOINED_BG = "rgba(5,150,105,0.12)";
 
 const DS = {
   coral: "#FF5A45",
@@ -90,20 +79,21 @@ interface ListItem {
 }
 
 // ─── DEMO: Hardcoded paid event card ─────────────────────────────────────────
-// Remove this once real price data flows from the API.
-// Renders Variant D (ticket stub) to showcase the paid card design.
+// Remove once real price data flows from the API.
 const DEMO_PAID_CARD = (
   <EventCard
     id="demo-paid-001"
     title="Rooftop Techno Night"
     category="Nightlife"
+    categoryIconUrl="http://217.182.74.113:30080/assets/d7e6ffae819541d98b2351304321d9c1gym-interest-icon.svg"
     price="€18"
     attendees={134}
     location="Tallinn Old Town"
-    time={Math.floor(Date.now() / 1000) + 60 * 60 * 48} // 48 h from now
+    time={Math.floor(Date.now() / 1000) + 60 * 60 * 48}
     isSaved={false}
     onPress={() => {}}
     onJoin={() => {}}
+    onSave={() => {}}
   />
 );
 
@@ -139,25 +129,36 @@ async function getUserLikedEvents(
   }
 }
 
-const mapEventToCardProps = (event: ApiEvent) => ({
+/** Map an ApiEvent to the props EventCard expects */
+const mapEventToCardProps = (
+  event: ApiEvent,
+  isSaved: boolean = false,
+  onSave: () => void = () => {},
+) => ({
   id: event.eventId,
   title: event.title,
   image: event.thumbnail ?? undefined,
+  interest: event.interest,
   category: event.interest?.name ?? "General",
   categoryIconUrl: event.interest?.icon?.url,
+  // EventCard accepts a unix timestamp (seconds)
   time: event.startScheduledTo
     ? Math.floor(new Date(event.startScheduledTo).getTime() / 1000)
     : undefined,
   attendees: event.participantsSummary?.currentCount ?? 0,
   location: event.locationName ?? "Location TBA",
+  isSaved,
+  onSave,
 });
 
+/** Convert an ApiEvent to the shape expected by the detail modals */
 const buildEventShape = (event: ApiEvent) => ({
   id: event.eventId,
   description: event.description,
   image: event.thumbnail ?? undefined,
   title: event.title,
   category: event.interest?.name ?? "General",
+  interest: event.interest,
   time: event.startScheduledTo,
   location: event.location ?? "Location TBA",
   locationName: event.locationName ?? "Location TBA",
@@ -170,106 +171,21 @@ const buildEventShape = (event: ApiEvent) => ({
   status: (event as any).status ?? "active",
 });
 
-function formatEventTime(dateStr?: string): string {
-  if (!dateStr) return "TBD";
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diffDays = Math.floor((d.getTime() - now.getTime()) / 86400000);
-  if (diffDays === 0)
-    return `Today · ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
-  if (diffDays === 1)
-    return `Tomorrow · ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`;
-  return d.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-// ─── My Event Card ────────────────────────────────────────────────────────────
-interface MyEventCardProps {
-  item: ListItem;
-  onPress: () => void;
-  index: number;
-}
-
-function MyEventCard({ item, onPress }: MyEventCardProps) {
-  const isCreated = item.kind === "created";
-  const accentColor = isCreated ? C.accent : C.joined;
-  const badgeBg = isCreated ? ACCENT_BG : JOINED_BG;
-
-  const pressAnim = useRef(new Animated.Value(1)).current;
-  const handlePressIn = () =>
-    Animated.spring(pressAnim, {
-      toValue: 0.97,
-      useNativeDriver: true,
-      damping: 20,
-      stiffness: 400,
-    }).start();
-  const handlePressOut = () =>
-    Animated.spring(pressAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 16,
-      stiffness: 300,
-    }).start();
-
-  const current = item.event.participantsSummary?.currentCount ?? 0;
-  const max = item.event.participantsSummary?.maxCount ?? 0;
-  const countLabel = isCreated
-    ? `${current}${max > 0 ? ` / ${max}` : ""} GOING`
-    : `${current} GOING`;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-    >
-      <Animated.View style={[s.myCard, { transform: [{ scale: pressAnim }] }]}>
-        <View style={s.myCardBody}>
-          <View style={[s.kindBadge, { backgroundColor: badgeBg }]}>
-            <View style={[s.badgeDot, { backgroundColor: accentColor }]} />
-            <Text style={[s.kindBadgeText, { color: accentColor }]}>
-              {isCreated ? "HOSTING" : "GOING"}
-            </Text>
-          </View>
-          <Text style={s.myCardTitle} numberOfLines={1}>
-            {item.event.title}
-          </Text>
-          <Text style={s.myCardDate} numberOfLines={1}>
-            {formatEventTime(item.event.startScheduledTo)}
-          </Text>
-          <View
-            style={[s.myCardRule, { backgroundColor: accentColor + "30" }]}
-          />
-          <View style={s.myCardFoot}>
-            <Text style={s.myCardCount}>{countLabel}</Text>
-            <View style={[s.myCardArrow, { borderColor: accentColor + "40" }]}>
-              <Text
-                style={[
-                  { fontSize: 10, color: C.ink + "80", fontWeight: "900" },
-                ]}
-              >
-                →
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Animated.View>
-    </Pressable>
-  );
+/** Convert an ISO date string to a unix timestamp in seconds */
+function isoToTimestamp(dateStr?: string): number | undefined {
+  if (!dateStr) return undefined;
+  return Math.floor(new Date(dateStr).getTime() / 1000);
 }
 
 // ─── My Events Strip ──────────────────────────────────────────────────────────
 interface MyEventsStripProps {
   items: ListItem[];
   onPress: (id: string) => void;
-  onLeave: (id: string) => void;
 }
 
 function MyEventsStrip({ items, onPress }: MyEventsStripProps) {
   if (items.length === 0) return null;
+
   return (
     <View style={s.stripSection}>
       <Text style={s.stripLabel}>MY EVENTS</Text>
@@ -281,11 +197,15 @@ function MyEventsStrip({ items, onPress }: MyEventsStripProps) {
         snapToInterval={230 + 8}
         snapToAlignment="start"
       >
-        {items.map((item, idx) => (
+        {items.map((item) => (
           <MyEventCard
             key={item.event.eventId}
-            item={item}
-            index={idx}
+            eventId={item.event.eventId}
+            title={item.event.title}
+            startTimestamp={isoToTimestamp(item.event.startScheduledTo)}
+            kind={item.kind === "created" ? "created" : "participated"}
+            currentCount={item.event.participantsSummary?.currentCount}
+            maxCount={item.event.participantsSummary?.maxCount ?? 0}
             onPress={() => onPress(item.event.eventId)}
           />
         ))}
@@ -311,6 +231,7 @@ export default function EventScreen() {
   const { user } = useAuth();
   const { location } = useLocation();
   const insets = useSafeAreaInsets();
+  const { impact, notification } = useHapticFeedback();
 
   const { joinEvent } = useJoinEvent(user?.accessToken || null);
   const { startEvent } = useStartEvent(user?.accessToken || null);
@@ -324,9 +245,7 @@ export default function EventScreen() {
   const [myItems, setMyItems] = useState<ListItem[]>([]);
   const [nearbyItems, setNearbyItems] = useState<ListItem[]>([]);
   const [allEvents, setAllEvents] = useState<ApiEvent[]>([]);
-  const [allParticipations, setAllParticipations] = useState<Participation[]>(
-    [],
-  );
+  const [allParticipations, setAllParticipations] = useState<Participation[]>([]);
   const [allCreatedIds, setAllCreatedIds] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -343,6 +262,7 @@ export default function EventScreen() {
     fetchEvents();
   }, [user?.accessToken]);
 
+  // ─── List split logic ──────────────────────────────────────────────────────
   const splitList = useCallback(
     (
       recommended: ApiEvent[],
@@ -399,10 +319,13 @@ export default function EventScreen() {
     [],
   );
 
+  // ─── Data fetch ────────────────────────────────────────────────────────────
   const fetchEvents = async () => {
     try {
+      await impact("medium");
       setRefreshing(true);
       setError(null);
+
       const [createdEvents, recommended, participations, likedEvents] =
         await Promise.all([
           getUserCreatedEvents(user?.userName || "", user?.accessToken || ""),
@@ -413,11 +336,13 @@ export default function EventScreen() {
           ),
           getUserLikedEvents(user?.userName || "", user?.accessToken || ""),
         ]);
+
       hydrateFromData(likedEvents);
       const createdIds = new Set(createdEvents.map((e) => e.eventId));
       setAllEvents(recommended);
       setAllCreatedIds(createdIds);
       setAllParticipations(participations);
+
       const { mine, nearby } = splitList(
         recommended,
         createdIds,
@@ -426,9 +351,12 @@ export default function EventScreen() {
       );
       setMyItems(mine);
       setNearbyItems(nearby);
+
+      await notification("success");
     } catch (err) {
       console.error(err);
       setError("Failed to load events");
+      await notification("error");
     } finally {
       setRefreshing(false);
       setLoading(false);
@@ -450,6 +378,7 @@ export default function EventScreen() {
     [allEvents, allCreatedIds, allParticipations, splitList],
   );
 
+  // ─── Modal helpers ─────────────────────────────────────────────────────────
   const handleEventPress = async (eventId: string) => {
     try {
       setModalLoading(true);
@@ -471,15 +400,14 @@ export default function EventScreen() {
 
   const handleToggleSave = () => {
     if (!selectedEvent) return;
-    if (isEventSaved(selectedEvent.eventId)) unsaveEvent(selectedEvent.eventId);
-    else
-      saveEvent(
-        selectedEvent.eventId,
-        selectedEvent.title,
-        user?.accessToken || "",
-      );
+    if (isEventSaved(selectedEvent.eventId)) {
+      unsaveEvent(selectedEvent.eventId);
+    } else {
+      saveEvent(selectedEvent.eventId, selectedEvent.title, user?.accessToken || "");
+    }
   };
 
+  // ─── Event actions ─────────────────────────────────────────────────────────
   const handleJoinEvent = async (eventId: string) => {
     try {
       await joinEvent(eventId);
@@ -506,7 +434,9 @@ export default function EventScreen() {
         setSelectedEvent(updated);
       } catch {}
       fetchEvents();
-    } else Alert.alert("Error", "Could not start event. Please try again.");
+    } else {
+      Alert.alert("Error", "Could not start event. Please try again.");
+    }
   };
 
   const handleCancelEvent = async (eventId: string) => {
@@ -517,7 +447,9 @@ export default function EventScreen() {
         setSelectedEvent(updated);
       } catch {}
       fetchEvents();
-    } else Alert.alert("Error", "Could not cancel event. Please try again.");
+    } else {
+      Alert.alert("Error", "Could not cancel event. Please try again.");
+    }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
@@ -525,7 +457,9 @@ export default function EventScreen() {
     if (ok) {
       handleCloseModal();
       fetchEvents();
-    } else Alert.alert("Error", "Could not delete event. Please try again.");
+    } else {
+      Alert.alert("Error", "Could not delete event. Please try again.");
+    }
   };
 
   const handleKickParticipant = async (eventId: string, username: string) => {
@@ -536,28 +470,46 @@ export default function EventScreen() {
         setSelectedEvent(updated);
       } catch {}
       fetchEvents();
-    } else
+    } else {
       Alert.alert("Error", "Could not remove participant. Please try again.");
+    }
   };
 
+  // ─── Derived modal view mode ───────────────────────────────────────────────
   const viewMode = selectedEvent
     ? selectedEvent.author?.username === user?.userName
       ? "author"
       : allParticipations.some(
-            (p) => p.resourceSummary.eventId === selectedEvent.eventId,
-          )
-        ? "participant"
-        : "basic"
+          (p) => p.resourceSummary.eventId === selectedEvent.eventId,
+        )
+      ? "participant"
+      : "basic"
     : "basic";
 
+  // ─── Render helpers ────────────────────────────────────────────────────────
   const renderNearbyItem = ({ item }: { item: ListItem }) => (
     <EventCard
-      {...mapEventToCardProps(item.event)}
+      {...mapEventToCardProps(
+        item.event,
+        isEventSaved(item.event.eventId),
+        () => {
+          if (isEventSaved(item.event.eventId)) {
+            unsaveEvent(item.event.eventId);
+          } else {
+            saveEvent(
+              item.event.eventId,
+              item.event.title,
+              user?.accessToken || "",
+            );
+          }
+        },
+      )}
       onPress={() => handleEventPress(item.event.eventId)}
       onJoin={() => handleJoinEvent(item.event.eventId)}
     />
   );
 
+  // ─── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
       <Container>
@@ -574,6 +526,7 @@ export default function EventScreen() {
     );
   }
 
+  // ─── Error state ───────────────────────────────────────────────────────────
   if (error && !modalVisible) {
     return (
       <Container>
@@ -589,6 +542,7 @@ export default function EventScreen() {
     );
   }
 
+  // ─── Main render ───────────────────────────────────────────────────────────
   return (
     <View style={s.screen}>
       <FeedHeader
@@ -625,12 +579,7 @@ export default function EventScreen() {
           if (section.type === "myEvents") {
             return (
               <>
-                {/* My events horizontal strip */}
-                <MyEventsStrip
-                  items={item as ListItem[]}
-                  onPress={handleEventPress}
-                  onLeave={handleLeaveEvent}
-                />
+                <MyEventsStrip items={item as ListItem[]} onPress={handleEventPress} />
 
                 {/* ── DEMO: Paid ticket card ────────────────────────────────
                     Shows Variant D (ticket stub) with a hardcoded paid event.
@@ -668,6 +617,7 @@ export default function EventScreen() {
         scrollEventThrottle={16}
       />
 
+      {/* ── Modal overlay ───────────────────────────────────────────────────── */}
       {modalVisible && (
         <View style={s.modalOverlay}>
           <BlurView
@@ -789,7 +739,7 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // ── Strip ──────────────────────────────────────────────────────────────────
+  // ── My Events Strip ────────────────────────────────────────────────────────
   stripSection: {
     marginTop: 8,
     marginBottom: 4,
@@ -807,82 +757,7 @@ const s = StyleSheet.create({
     paddingRight: 16,
   },
 
-  myCard: {
-    width: 270,
-    backgroundColor: C.bg,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "rgba(0,0,0,0.08)",
-    flexDirection: "row",
-    overflow: "hidden",
-    ...Platform.select({
-      ios: {
-        shadowColor: C.ink,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-      },
-      android: { elevation: 2 },
-    }),
-  },
-  myCardBar: { width: 3, height: "100%" },
-  myCardBody: { flex: 1, paddingHorizontal: 16, paddingVertical: 12, gap: 5 },
-
-  kindBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    alignSelf: "flex-start",
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  badgeDot: { width: 5, height: 5, borderRadius: 2.5 },
-  kindBadgeText: { fontSize: 9, fontWeight: "900", letterSpacing: 1.2 },
-
-  myCardTitle: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: C.ink,
-    letterSpacing: -0.3,
-    lineHeight: 20,
-    textTransform: "uppercase",
-  },
-  myCardDate: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: C.muted,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-  myCardRule: {
-    height: 1,
-    marginVertical: 2,
-  },
-  myCardFoot: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  myCardCount: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: C.mid,
-    letterSpacing: 0.4,
-  },
-  myCardArrow: {
-    width: 20,
-    height: 20,
-    borderWidth: 1.5,
-    borderColor: "rgba(0,0,0,0.15)",
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
   // ── Demo paid section ──────────────────────────────────────────────────────
-  // Wraps the FEATURED header + DEMO_PAID_CARD.
-  // Safe to delete alongside the DEMO_PAID_CARD constant above.
   demoPaidSection: {
     marginTop: 4,
   },

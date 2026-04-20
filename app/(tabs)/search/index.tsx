@@ -1,4 +1,5 @@
 // app/(tabs)/UserSearchScreen.tsx
+import { useHapticFeedback } from "@/hooks/useHapticFeedback";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -19,18 +20,46 @@ import UserProfileModal from "../../modal/UserProfileModal";
 /* ===================== DESIGN TOKENS ===================== */
 
 const C = {
-  bg: "#F7F6F3",
+  bg: "#F5F3EF",
   surface: "#FFFFFF",
-  surfaceAlt: "#F0EEE9",
-  border: "#E8E6E1",
-  borderMid: "#D4D1CB",
-  text: "#1A1814",
-  textSub: "#5C5850",
-  textMuted: "#A09990",
+  surfaceAlt: "#EFEDE8",
+  surfaceSunken: "#E9E7E2",
+  border: "#E4E1DB",
+  borderMid: "#CEC9C1",
+  text: "#1C1916",
+  textSub: "#6B6560",
+  textMuted: "#A8A09A",
   coral: "#E8543A",
-  coralLight: "rgba(232,84,58,0.08)",
-  coralBorder: "rgba(232,84,58,0.20)",
+  coralLight: "rgba(232,84,58,0.07)",
+  coralBorder: "rgba(232,84,58,0.16)",
+  coralMid: "rgba(232,84,58,0.55)",
 } as const;
+
+/* ===================== LANGUAGE → FLAG ===================== */
+
+const LANG_FLAGS: Record<string, string> = {
+  en: "🇬🇧",
+  lv: "🇱🇻",
+  de: "🇩🇪",
+  fr: "🇫🇷",
+  es: "🇪🇸",
+  ru: "🇷🇺",
+  it: "🇮🇹",
+  pl: "🇵🇱",
+  nl: "🇳🇱",
+  pt: "🇵🇹",
+  zh: "🇨🇳",
+  ja: "🇯🇵",
+  ko: "🇰🇷",
+  sv: "🇸🇪",
+  fi: "🇫🇮",
+  uk: "🇺🇦",
+  tr: "🇹🇷",
+  ar: "🇸🇦",
+};
+
+const langToFlag = (code: string): string =>
+  LANG_FLAGS[code.toLowerCase()] ?? code.toUpperCase();
 
 /* ===================== TYPES ===================== */
 
@@ -56,16 +85,47 @@ interface User {
   interests: string[];
 }
 
+/* ===================== AVATAR COLORS ===================== */
+
+const AVATAR_PALETTES = [
+  { bg: "rgba(232,84,58,0.08)", border: "rgba(232,84,58,0.18)", text: C.coral },
+  {
+    bg: "rgba(59,139,212,0.08)",
+    border: "rgba(59,139,212,0.18)",
+    text: "#3B8BD4",
+  },
+  {
+    bg: "rgba(83,74,183,0.08)",
+    border: "rgba(83,74,183,0.18)",
+    text: "#534AB7",
+  },
+  {
+    bg: "rgba(29,158,117,0.08)",
+    border: "rgba(29,158,117,0.18)",
+    text: "#1D9E75",
+  },
+  {
+    bg: "rgba(186,117,23,0.08)",
+    border: "rgba(186,117,23,0.18)",
+    text: "#BA7517",
+  },
+];
+
+const avatarPalette = (username: string) =>
+  AVATAR_PALETTES[username.charCodeAt(0) % AVATAR_PALETTES.length];
+
 /* ===================== SCREEN ===================== */
 
 export default function UserSearchScreen() {
+  const { impact, notification } = useHapticFeedback();
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const searchFocusAnim = useRef(new Animated.Value(0)).current;
+  const [focused, setFocused] = useState(false);
   const [selectedUsername, setSelectedUsername] = useState("");
+  const borderAnim = useRef(new Animated.Value(0)).current;
 
   /* ===================== API ===================== */
 
@@ -100,10 +160,10 @@ export default function UserSearchScreen() {
           fullName: `${u.firstName} ${u.lastName}`,
           username: u.userName,
           avatar: u.profilePhoto?.url,
-          interests: u.preferredLanguages.slice(0, 3),
+          interests: u.preferredLanguages.slice(0, 4),
         })),
       );
-    } catch (e) {
+    } catch {
       setError("Could not load users");
     } finally {
       setLoading(false);
@@ -111,6 +171,7 @@ export default function UserSearchScreen() {
   };
 
   const handleRefresh = async () => {
+    await impact("medium");
     setRefreshing(true);
     if (!searchQuery.trim()) {
       await fetchUsers();
@@ -119,16 +180,36 @@ export default function UserSearchScreen() {
       await fetchUsers(userName, rest.join(" ") || undefined);
     }
     setRefreshing(false);
+    await notification("success");
   };
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
+  const onFocus = () => {
+    setFocused(true);
+    Animated.timing(borderAnim, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const onBlur = () => {
+    setFocused(false);
+    Animated.timing(borderAnim, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  };
+
   /* ===================== DERIVED ===================== */
 
   const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
     return (
       user.fullName.toLowerCase().includes(query) ||
       user.username.toLowerCase().includes(query) ||
@@ -138,50 +219,69 @@ export default function UserSearchScreen() {
 
   /* ===================== RENDER ITEM ===================== */
 
-  // Stable reference — won't cause FlatList to remount items on each keystroke
-  const renderUser = useCallback(
-    ({ item }: { item: User }) => (
+  const renderUser = useCallback(({ item }: { item: User }) => {
+    const palette = avatarPalette(item.username);
+    const initials = item.fullName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+
+    return (
       <Pressable
         style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
         onPress={() => setSelectedUsername(item.username)}
       >
         <View style={styles.cardBody}>
-          {item.avatar ? (
-            <Image source={{ uri: item.avatar }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>
-                {item.fullName
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")
-                  .toUpperCase()}
-              </Text>
-            </View>
-          )}
+          {/* Avatar */}
+          <View style={styles.avatarWrap}>
+            {item.avatar ? (
+              <Image source={{ uri: item.avatar }} style={styles.avatarImage} />
+            ) : (
+              <View
+                style={[
+                  styles.avatarCircle,
+                  {
+                    backgroundColor: palette.bg,
+                    borderColor: palette.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.avatarText, { color: palette.text }]}>
+                  {initials}
+                </Text>
+              </View>
+            )}
+          </View>
 
+          {/* Info */}
           <View style={styles.userInfo}>
-            <Text style={styles.name}>{item.fullName}</Text>
-            <Text style={styles.username}>@{item.username}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {item.fullName}
+            </Text>
+            <Text style={styles.handle} numberOfLines={1}>
+              @{item.username}
+            </Text>
             {item.interests.length > 0 && (
-              <View style={styles.interestsRow}>
+              <View style={styles.flagsRow}>
                 {item.interests.map((lang, i) => (
-                  <View key={i} style={styles.interestTag}>
-                    <Text style={styles.interestText}>{lang}</Text>
-                  </View>
+                  <Text key={i} style={styles.flag}>
+                    {langToFlag(lang)}
+                  </Text>
                 ))}
               </View>
             )}
           </View>
 
-          <Ionicons name="chevron-forward" size={16} color={C.borderMid} />
+          {/* Chevron */}
+          <Ionicons name="chevron-forward" size={14} color={C.borderMid} />
         </View>
       </Pressable>
-    ),
-    [],
-  );
+    );
+  }, []);
 
-  /* ===================== FOOTER STATES ===================== */
+  /* ===================== STATES ===================== */
 
   const renderFooter = () => {
     if (loading) {
@@ -194,7 +294,7 @@ export default function UserSearchScreen() {
     if (error) {
       return (
         <View style={styles.stateContainer}>
-          <Ionicons name="alert-circle-outline" size={40} color={C.textMuted} />
+          <Ionicons name="alert-circle-outline" size={36} color={C.textMuted} />
           <Text style={styles.stateText}>{error}</Text>
         </View>
       );
@@ -202,7 +302,7 @@ export default function UserSearchScreen() {
     if (filteredUsers.length === 0) {
       return (
         <View style={styles.stateContainer}>
-          <Ionicons name="people-outline" size={40} color={C.textMuted} />
+          <Ionicons name="people-outline" size={36} color={C.textMuted} />
           <Text style={styles.stateText}>
             {searchQuery.trim().length > 0
               ? "No results found"
@@ -214,88 +314,61 @@ export default function UserSearchScreen() {
     return null;
   };
 
+  /* ===================== ANIMATED BORDER ===================== */
+
+  const animatedBorderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [C.border, C.coral],
+  });
+
   /* ===================== RENDER ===================== */
 
   return (
     <>
       <SafeAreaView style={styles.container} edges={["top"]}>
-
-        {/*
-         * KEY FIX: TextInput lives here, OUTSIDE FlatList.
-         * When filteredUsers changes, FlatList re-renders but the input
-         * is untouched — keyboard stays open.
-         */}
+        {/* Header + Search — lives outside FlatList so keyboard never collapses */}
         <View style={styles.topSection}>
+          {/* Title */}
           <View style={styles.header}>
-            <Text style={styles.headerEyebrow}>Community</Text>
-            <Text style={styles.headerTitle}>Find People</Text>
+            <Text style={styles.headerTitle}>Find people</Text>
           </View>
 
-          <View style={styles.searchFieldGroup}>
-            <View style={styles.searchRow}>
-              <Ionicons name="search" size={18} color={C.textMuted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by name or language…"
-                placeholderTextColor={C.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                maxLength={64}
-                onFocus={() =>
-                  Animated.timing(searchFocusAnim, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start()
-                }
-                onBlur={() =>
-                  Animated.timing(searchFocusAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start()
-                }
-              />
-              {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-                  <Ionicons name="close-circle" size={17} color={C.textMuted} />
-                </Pressable>
-              )}
-            </View>
-            <Animated.View
-              style={[
-                styles.searchUnderline,
-                {
-                  backgroundColor: searchFocusAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [C.border, C.coral],
-                  }),
-                  height: searchFocusAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 2],
-                  }),
-                },
-              ]}
+          {/* Search bar */}
+          <Animated.View
+            style={[styles.searchBar, { borderColor: animatedBorderColor }]}
+          >
+            <Ionicons
+              name="search"
+              size={16}
+              color={focused ? C.coral : C.textMuted}
             />
-          </View>
-
-          {!loading && !error && filteredUsers.length > 0 && (
-            <Text style={styles.resultCount}>
-              {filteredUsers.length}{" "}
-              {filteredUsers.length === 1 ? "person" : "people"}
-            </Text>
-          )}
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Name, username, language…"
+              placeholderTextColor={C.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              maxLength={64}
+              onFocus={onFocus}
+              onBlur={onBlur}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+                <Ionicons name="close-circle" size={16} color={C.textMuted} />
+              </Pressable>
+            )}
+          </Animated.View>
         </View>
 
+        {/* List */}
         <FlatList
           data={loading || error ? [] : filteredUsers}
           keyExtractor={(i) => i.id}
           renderItem={renderUser}
           ListFooterComponent={renderFooter()}
           showsVerticalScrollIndicator={false}
-          // Tapping a result won't dismiss the keyboard accidentally
           keyboardShouldPersistTaps="handled"
-          // Dragging the list will dismiss it naturally
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -330,172 +403,152 @@ const styles = StyleSheet.create({
 
   topSection: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: 18,
+    paddingBottom: 6,
   },
 
   header: {
-    marginBottom: 24,
-  },
-
-  headerEyebrow: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 2,
-    color: C.coral,
-    textTransform: "uppercase",
-    marginBottom: 6,
+    marginBottom: 20,
   },
 
   headerTitle: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: "800",
     color: C.text,
     letterSpacing: -1,
-    lineHeight: 40,
+    lineHeight: 36,
   },
 
-  searchFieldGroup: {
-    marginBottom: 16,
-  },
-
-  searchRow: {
+  searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 4,
-    height: 44,
+    backgroundColor: C.surface,
+    borderWidth: 0.75,
+    borderColor: C.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 46,
+    marginBottom: 14,
   },
 
   searchInput: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "400",
     color: C.text,
-    paddingVertical: 10,
-  },
-
-  searchUnderline: {
-    marginTop: 6,
-    borderRadius: 2,
   },
 
   resultCount: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "500",
     color: C.textMuted,
-    letterSpacing: 0.3,
-    marginLeft: 6,
-    marginBottom: 8,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginBottom: 4,
+    marginLeft: 2,
   },
 
   listContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingHorizontal: 12,
+    paddingTop: 6,
     paddingBottom: 100,
   },
 
   separator: {
-    height: 8,
+    height: 6,
   },
 
   stateContainer: {
-    paddingTop: 64,
+    paddingTop: 72,
     alignItems: "center",
-    gap: 14,
+    gap: 12,
   },
 
   stateText: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "500",
     color: C.textMuted,
     textAlign: "center",
   },
 
+  /* Card */
   card: {
     backgroundColor: C.surface,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 0.75,
     borderColor: C.border,
-    overflow: "hidden",
   },
 
   cardPressed: {
-    opacity: 0.65,
-    transform: [{ scale: 0.985 }],
+    opacity: 0.6,
+    transform: [{ scale: 0.988 }],
   },
 
   cardBody: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 12,
   },
 
+  /* Avatar */
+  avatarWrap: {
+    flexShrink: 0,
+  },
+
   avatarImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 60,
+    height: 60,
+    borderRadius: 13,
     backgroundColor: C.surfaceAlt,
   },
 
   avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: C.coralLight,
+    width: 60,
+    height: 60,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: C.coralBorder,
+    borderWidth: 0.75,
   },
 
   avatarText: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: C.coral,
-    letterSpacing: 0.5,
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 
+  /* User info */
   userInfo: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
 
   name: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: C.text,
-  },
-
-  username: {
-    fontSize: 12,
-    color: C.textMuted,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-
-  interestsRow: {
-    flexDirection: "row",
-    gap: 5,
-    marginTop: 7,
-    flexWrap: "wrap",
-  },
-
-  interestTag: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: C.surfaceAlt,
-    borderWidth: 0.5,
-    borderColor: C.border,
-  },
-
-  interestText: {
-    color: C.textSub,
+    fontSize: 13,
     fontWeight: "600",
-    fontSize: 10,
-    letterSpacing: 0.4,
+    color: C.textSub,
+    letterSpacing: -0.1,
+  },
+
+  handle: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: C.text,
+    letterSpacing: 0.1,
+  },
+
+  /* Flags */
+  flagsRow: {
+    flexDirection: "row",
+    gap: 2,
+    marginTop: 4,
+  },
+
+  flag: {
+    fontSize: 13,
+    lineHeight: 13,
   },
 });

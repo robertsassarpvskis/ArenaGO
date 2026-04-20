@@ -1,19 +1,19 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
   id: number;
   sender: "user" | "other";
@@ -23,425 +23,400 @@ interface Message {
 interface ChatData {
   id: number;
   name: string;
-  avatarColor: string;
+  username: string;
   initials: string;
   online: boolean;
+  accentColor: string;
+  languages: string[];
   messages: Message[];
 }
 
-const COLORS = {
-  primary: "#FF6B58",
-  secondary: "#FF8A73",
-  accentGreen: "#10B981",
-  accentRed: "#EF4444",
-  textPrimary: "#1F2937",
-  textSecondary: "#6B7280",
-  background: "#fffcf4",
-  cardBg: "#FFFFFF",
-  darkGray: "#374151",
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  accent: "#FF6B58",
+  accentLight: "#FF8A73",
+  joined: "#059669",
+  joinedLight: "#10B981",
+  green: "#10B981",
+  amber: "#F59E0B",
+  red: "#EF4444",
+  blue: "#3B82F6",
+  purple: "#8B5CF6",
+  ink: "#0F172A",
+  mid: "#64748B",
+  muted: "#94A3B8",
+  divider: "#E2E8F0",
+  bg: "#F8F7F2",
+  card: "#FFFFFF",
+  overlay: "rgba(15,23,42,0.65)",
+} as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const LANG_FLAGS: Record<string, string> = {
+  EN: "🇬🇧",
+  FR: "🇫🇷",
+  ZH: "🇨🇳",
+  ES: "🇪🇸",
+  DE: "🇩🇪",
 };
 
-const chatDatabase: { [key: number]: ChatData } = {
+// ─── Data ─────────────────────────────────────────────────────────────────────
+const chatDatabase: Record<number, ChatData> = {
   1: {
     id: 1,
     name: "Sarah Anderson",
-    avatarColor: "#FF6B58",
+    username: "@sarah.cre8",
     initials: "SA",
     online: true,
+    accentColor: "#FF6B58",
+    languages: ["EN", "FR"],
     messages: [
       { id: 1, sender: "other", text: "Hey! How are you?" },
       { id: 2, sender: "user", text: "Doing great! You?" },
       { id: 3, sender: "other", text: "All good! Free this weekend?" },
       { id: 4, sender: "user", text: "Yeah, Saturday works" },
-      { id: 5, sender: "other", text: "Perfect! See you then 🎉" },
-      { id: 6, sender: "user", text: "What time?" },
-      { id: 7, sender: "other", text: "That sounds perfect! See you there" },
-    ],
-  },
-  2: {
-    id: 2,
-    name: "Jordan Lee",
-    avatarColor: "#FF8A73",
-    initials: "JL",
-    online: true,
-    messages: [
-      { id: 1, sender: "other", text: "Did you review the project?" },
-      { id: 2, sender: "user", text: "Yeah, looks good!" },
-      { id: 3, sender: "other", text: "Nice! Thanks" },
     ],
   },
 };
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function ChatOpen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const chatId = parseInt(params.id as string) || 1;
 
+  const flatListRef = useRef<FlatList>(null);
   const chat = chatDatabase[chatId];
-  const [messages, setMessages] = useState<Message[]>(chat?.messages || []);
+
+  const [messages, setMessages] = useState<Message[]>(chat.messages);
   const [inputText, setInputText] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
-  const handleSendMessage = () => {
-    if (inputText.trim() === "") return;
+  const sendMessage = () => {
+    if (!inputText.trim()) return;
 
-    const newMessage: Message = {
-      id: messages.length + 1,
-      sender: "user",
-      text: inputText,
-    };
+    setMessages((prev) => [
+      ...prev,
+      { id: prev.length + 1, sender: "user", text: inputText.trim() },
+    ]);
 
-    setMessages([...messages, newMessage]);
     setInputText("");
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 80);
   };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    // Simulate refresh - in a real app, you would fetch updated messages from API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setRefreshing(false);
-  };
+  // ── Message bubble ──────────────────────────────────────────────────────────
+  const renderMessage = ({ item, index }: any) => {
+    const isUser = item.sender === "user";
+    const prev = messages[index - 1];
+    const grouped = prev?.sender === item.sender;
 
-  const renderMessage = ({ item }: { item: Message }) => (
-    <View
-      style={[
-        styles.messageRow,
-        item.sender === "user" ? styles.userMessageRow : styles.otherMessageRow,
-      ]}
-    >
-      {item.sender === "other" && (
-        <View
-          style={[
-            styles.messageAvatar,
-            { backgroundColor: chat?.avatarColor || COLORS.primary },
-          ]}
-        >
-          <Text style={styles.messageAvatarText}>{chat?.initials}</Text>
-        </View>
-      )}
-
+    return (
       <View
         style={[
-          styles.messageBubble,
-          item.sender === "user" ? styles.userBubble : styles.otherBubble,
+          styles.msgRow,
+          isUser ? styles.msgRight : styles.msgLeft,
+          grouped ? styles.grouped : styles.firstMsg,
         ]}
       >
-        <Text
+        {!isUser && !grouped && (
+          <View
+            style={[
+              styles.msgAvatar,
+              { backgroundColor: chat.accentColor + "18" },
+            ]}
+          >
+            <Text style={[styles.msgAvatarText, { color: chat.accentColor }]}>
+              {chat.initials}
+            </Text>
+          </View>
+        )}
+        {!isUser && grouped && <View style={styles.avatarSpacer} />}
+
+        <View
           style={[
-            styles.messageText,
-            {
-              color:
-                item.sender === "user" ? COLORS.cardBg : COLORS.textPrimary,
-            },
+            styles.bubble,
+            isUser ? styles.bubbleUser : styles.bubbleOther,
           ]}
         >
-          {item.text}
-        </Text>
+          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+            {item.text}
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backButton}
+          style={styles.backBtn}
           activeOpacity={0.7}
         >
-          <MaterialCommunityIcons
-            name="chevron-left"
-            size={28}
-            color={COLORS.textPrimary}
-          />
+          <MaterialCommunityIcons name="chevron-left" size={24} color={C.ink} />
         </TouchableOpacity>
 
-        <View style={styles.headerCenter}>
+        <View style={styles.headerMeta}>
           <View
             style={[
-              styles.headerAvatar,
-              { backgroundColor: chat?.avatarColor },
+              styles.avatar,
+              { backgroundColor: chat.accentColor + "18" },
             ]}
           >
-            <Text style={styles.headerAvatarText}>{chat?.initials}</Text>
-            {chat?.online && <View style={styles.headerOnlineIndicator} />}
+            <Text style={[styles.avatarText, { color: chat.accentColor }]}>
+              {chat.initials}
+            </Text>
+            {chat.online && <View style={styles.online} />}
           </View>
-          <View style={styles.headerInfo}>
-            <Text style={styles.chatTitle}>{chat?.name}</Text>
-            <Text style={styles.statusText}>
-              {chat?.online ? "Active now" : "Offline"}
+
+          <View>
+            <Text style={styles.name}>{chat.name}</Text>
+            <Text style={styles.username}>
+              {chat.online ? "Active now" : chat.username}
             </Text>
           </View>
         </View>
 
-        <TouchableOpacity style={styles.moreButton} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.moreBtn} activeOpacity={0.7}>
           <MaterialCommunityIcons
-            name="dots-vertical"
-            size={24}
-            color={COLORS.textPrimary}
+            name="dots-horizontal"
+            size={20}
+            color={C.mid}
           />
         </TouchableOpacity>
       </View>
 
       {/* Messages */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.messagesContainer}
-        keyboardVerticalOffset={90}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
       >
         <FlatList
+          ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.messagesList}
+          keyExtractor={(m) => m.id.toString()}
+          contentContainerStyle={styles.msgList}
           showsVerticalScrollIndicator={false}
-          inverted={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-              colors={[COLORS.primary]}
-            />
-          }
         />
-      </KeyboardAvoidingView>
 
-      {/* Input Area */}
-      <View style={styles.inputArea}>
-        <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton} activeOpacity={0.7}>
-            <MaterialCommunityIcons
-              name="plus-circle"
-              size={28}
-              color={COLORS.textSecondary}
+        {/* Input */}
+        <View style={styles.inputWrapper}>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Message…"
+              placeholderTextColor={C.muted}
+              value={inputText}
+              onChangeText={setInputText}
+              returnKeyType="send"
+              onSubmitEditing={sendMessage}
             />
-          </TouchableOpacity>
 
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type a message..."
-            placeholderTextColor={COLORS.textSecondary}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={500}
-          />
-
-          {inputText.trim() !== "" ? (
             <TouchableOpacity
-              onPress={handleSendMessage}
-              style={styles.sendButton}
+              onPress={sendMessage}
+              style={[
+                styles.sendBtn,
+                !inputText.trim() && styles.sendBtnDisabled,
+              ]}
               activeOpacity={0.8}
             >
               <MaterialCommunityIcons
-                name="send"
-                size={20}
-                color={COLORS.cardBg}
+                name="arrow-up"
+                size={17}
+                color="#FFFFFF"
               />
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.emojiButton} activeOpacity={0.7}>
-              <MaterialCommunityIcons
-                name="emoticon-happy-outline"
-                size={24}
-                color={COLORS.textSecondary}
-              />
-            </TouchableOpacity>
-          )}
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: C.bg,
   },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
+    backgroundColor: C.card,
+    gap: 12,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.bg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  headerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  avatarText: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+
+  online: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.green,
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    borderWidth: 2,
+    borderColor: C.card,
+  },
+
+  name: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: C.ink,
+    letterSpacing: -0.2,
+  },
+
+  username: {
+    fontSize: 12,
+    color: C.mid,
+    marginTop: 1,
+  },
+
+  moreBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.bg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  msgList: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+
+  msgRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+
+  msgLeft: { justifyContent: "flex-start" },
+  msgRight: { justifyContent: "flex-end" },
+
+  firstMsg: { marginTop: 10 },
+  grouped: { marginTop: 2 },
+
+  msgAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
+    alignSelf: "flex-end",
   },
-  headerCenter: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  headerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
-  headerAvatarText: {
-    fontSize: 16,
+
+  msgAvatarText: {
+    fontSize: 10,
     fontWeight: "700",
-    color: COLORS.cardBg,
   },
-  headerOnlineIndicator: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: COLORS.accentGreen,
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    borderWidth: 2.5,
-    borderColor: COLORS.cardBg,
+
+  avatarSpacer: { width: 36 },
+
+  bubble: {
+    maxWidth: "72%",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
   },
-  headerInfo: {
-    flex: 1,
+
+  bubbleUser: {
+    backgroundColor: C.accent,
+    borderBottomRightRadius: 5,
   },
-  chatTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-    marginBottom: 2,
+
+  bubbleOther: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.divider,
+    borderBottomLeftRadius: 5,
   },
-  statusText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: "500",
+
+  bubbleText: {
+    color: C.ink,
+    fontSize: 15,
+    lineHeight: 21,
   },
-  moreButton: {
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
+
+  bubbleTextUser: {
+    color: "#FFFFFF",
   },
-  messagesContainer: {
-    flex: 1,
-  },
-  messagesList: {
+
+  inputWrapper: {
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
     paddingHorizontal: 16,
-    paddingVertical: 20,
-    gap: 12,
+    paddingVertical: 10,
+    backgroundColor: C.card,
   },
-  messageRow: {
+
+  inputRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
+    backgroundColor: C.bg,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingLeft: 16,
+    borderWidth: 1,
+    borderColor: C.divider,
     gap: 8,
-    marginBottom: 4,
   },
-  userMessageRow: {
-    justifyContent: "flex-end",
+
+  input: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: C.ink,
   },
-  otherMessageRow: {
-    justifyContent: "flex-start",
-  },
-  messageAvatar: {
+
+  sendBtn: {
+    backgroundColor: C.accent,
+    borderRadius: 16,
     width: 32,
     height: 32,
-    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
   },
-  messageAvatarText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: COLORS.cardBg,
-  },
-  messageBubble: {
-    maxWidth: "70%",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  userBubble: {
-    backgroundColor: COLORS.primary,
-    borderBottomRightRadius: 4,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  otherBubble: {
-    backgroundColor: COLORS.cardBg,
-    borderBottomLeftRadius: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  messageText: {
-    fontSize: 16,
-    fontWeight: "500",
-    lineHeight: 22,
-  },
-  inputArea: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: COLORS.cardBg,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 4,
-  },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    backgroundColor: COLORS.background,
-    borderRadius: 24,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  attachButton: {
-    width: 36,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 16,
-    color: COLORS.textPrimary,
-    fontWeight: "500",
-    maxHeight: 100,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  emojiButton: {
-    width: 36,
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+
+  sendBtnDisabled: {
+    backgroundColor: C.muted,
   },
 });

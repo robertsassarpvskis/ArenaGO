@@ -17,7 +17,7 @@ import {
 // ─── Dimensions ───────────────────────────────────────────────────────────────
 
 export const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.9;
+export const MODAL_HEIGHT = SCREEN_HEIGHT * 0.88;
 export const DISMISS_THRESHOLD = 120;
 export const H_PAD = 20;
 
@@ -42,6 +42,32 @@ export const C = {
   overlay: "rgba(15,23,42,0.65)",
 } as const;
 
+// ─── Category pill palette ────────────────────────────────────────────────────
+// Each category gets a warm filled pill (Bolt Food style).
+// Falls back to amber for unknown categories.
+
+const CATEGORY_PILL_PALETTE: Record<string, { bg: string; text: string }> = {
+  popular: { bg: "#FFC107", text: "#7A5000" },
+  sport: { bg: "#DCFCE7", text: "#166534" },
+  sports: { bg: "#DCFCE7", text: "#166534" },
+  music: { bg: "#EDE9FE", text: "#5B21B6" },
+  art: { bg: "#FCE7F3", text: "#9D174D" },
+  food: { bg: "#FEF3C7", text: "#92400E" },
+  social: { bg: "#DBEAFE", text: "#1E3A8A" },
+  tech: { bg: "#E0F2FE", text: "#0C4A6E" },
+  outdoor: { bg: "#D1FAE5", text: "#064E3B" },
+  gaming: { bg: "#EDE9FE", text: "#4C1D95" },
+  fitness: { bg: "#D1FAE5", text: "#065F46" },
+  education: { bg: "#E0F2FE", text: "#0369A1" },
+  business: { bg: "#F0FDF4", text: "#14532D" },
+  culture: { bg: "#FDF4FF", text: "#701A75" },
+};
+
+function getCategoryPillStyle(label: string): { bg: string; text: string } {
+  const key = label.toLowerCase().trim();
+  return CATEGORY_PILL_PALETTE[key] ?? { bg: "#FFC107", text: "#7A5000" };
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type EventModalViewMode = "basic" | "participant" | "author";
@@ -58,6 +84,12 @@ export interface EventData {
   description?: string | null;
   image?: string | { url?: string } | null;
   category: string;
+  interest?: {
+    name: string;
+    id?: string;
+    icon?: { url?: string };
+    color?: { r: number; g: number; b: number; a: number };
+  };
   time: string;
   location: string | { latitude: number; longitude: number };
   locationName?: string;
@@ -67,6 +99,11 @@ export interface EventData {
   maxParticipants?: number | null;
   author: { username: string } | null;
   participantsPreview?: Participant[] | null;
+  participantsSummary?: {
+    maxCount: number;
+    currentCount: number;
+    participantsPreview: Participant[];
+  };
   status?: "active" | "started" | "cancelled" | "ended";
 }
 
@@ -81,7 +118,6 @@ export interface BaseEventModalProps {
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 
-// Monochrome avatar palette — hues based on the ink/mid/accent family
 const AVATAR_PALETTES: Array<[string, string]> = [
   ["#0F172A", "#1E293B"],
   ["#334155", "#475569"],
@@ -117,7 +153,6 @@ export const openMaps = (lat: number, lng: number, label?: string) => {
 
 // ─── Micro-components ─────────────────────────────────────────────────────────
 
-// Thin 1px rule — consistent throughout
 export const Divider = () => (
   <View
     style={{
@@ -128,7 +163,6 @@ export const Divider = () => (
   />
 );
 
-// Small all-caps label above sections
 export const SectionLabel = ({
   children,
   color = C.muted,
@@ -137,7 +171,36 @@ export const SectionLabel = ({
   color?: string;
 }) => <Text style={[sharedS.sectionLabel, { color }]}>{children}</Text>;
 
-// Tag chip — used for category
+// ─── CategoryPill ─────────────────────────────────────────────────────────────
+// Bolt Food-style warm filled rounded pill.
+// Replaces the old ink-block Tag chip.
+
+export function CategoryPill({ label }: { label: string }) {
+  const { bg, text } = getCategoryPillStyle(label);
+  return (
+    <View style={[pillS.pill, { backgroundColor: bg }]}>
+      <Text style={[pillS.text, { color: text }]}>
+        {label.charAt(0).toUpperCase() + label.slice(1).toLowerCase()}
+      </Text>
+    </View>
+  );
+}
+
+const pillS = StyleSheet.create({
+  pill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  text: {
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.1,
+  },
+});
+
+// Keep the old Tag export for any other places it may still be used
 export function Tag({
   label,
   outlined = false,
@@ -165,7 +228,6 @@ export function Tag({
   );
 }
 
-// Avatar — square, minimal border, ink-toned fallback
 export function Avatar({
   participant,
   size = 40,
@@ -223,7 +285,6 @@ export function Avatar({
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 export const sharedS = StyleSheet.create({
-  // Modal chrome
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: C.overlay,
@@ -234,8 +295,8 @@ export const sharedS = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: C.bg,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
@@ -243,27 +304,31 @@ export const sharedS = StyleSheet.create({
     shadowRadius: 20,
     elevation: 20,
   },
+
+  // ─── Handle row: rendered ON TOP of the hero image ───────────────────────
+  // Position absolute so the image fills the full hero region uninterrupted.
   handleRow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     paddingTop: 10,
     paddingBottom: 6,
     alignItems: "center",
-    zIndex: 10,
+    zIndex: 20,
   },
   handle: {
-    width: 32,
-    height: 3,
+    width: 36,
+    height: 4,
     borderRadius: 2,
-    backgroundColor: C.divider,
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
 
-  // Section spacing
   block: {
     paddingHorizontal: H_PAD,
     paddingTop: 20,
     paddingBottom: 16,
   },
-
-  // Typography
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -272,8 +337,6 @@ export const sharedS = StyleSheet.create({
     marginBottom: 8,
     color: C.muted,
   },
-
-  // Tag / chip
   tag: {
     alignSelf: "flex-start",
     paddingHorizontal: 9,
@@ -285,16 +348,12 @@ export const sharedS = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 1.8,
   },
-
-  // Body copy
   bodyText: {
     fontSize: 15,
     color: C.mid,
     lineHeight: 24,
     fontWeight: "400",
   },
-
-  // Location
   locationText: {
     fontSize: 16,
     fontWeight: "700",
@@ -302,8 +361,6 @@ export const sharedS = StyleSheet.create({
     letterSpacing: -0.2,
     marginTop: 4,
   },
-
-  // Map wrapper
   edgeMap: {
     height: 200,
     marginHorizontal: H_PAD,
@@ -311,8 +368,6 @@ export const sharedS = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 4,
   },
-
-  // Loading
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -325,8 +380,6 @@ export const sharedS = StyleSheet.create({
     color: C.ink,
     letterSpacing: 3,
   },
-
-  // Bottom bar
   bottomBar: {
     position: "absolute",
     bottom: 0,

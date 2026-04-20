@@ -3,6 +3,7 @@
 // Viewed profile — another user's wall.
 // mode="other" — Follow + Message buttons.
 
+import UserListModal from "@/app/modal/UserListModal";
 import ProfileBase, {
   C,
   Interest,
@@ -11,6 +12,7 @@ import ProfileBase, {
 } from "@/components/layout/ProfileBase";
 import { useAuth } from "@/hooks/context/AuthContext";
 import { useFollowers } from "@/hooks/profile/useFollowers";
+import { useFollowersFollowing } from "@/hooks/profile/useFollowersFollowing";
 import { useProfileToFollow } from "@/hooks/profile/useProfileToFollow";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -150,6 +152,16 @@ export default function UserProfileScreen({
     loading: followLoading,
   } = useProfileToFollow();
   const { followers, setFollowers } = useFollowers(username);
+  const {
+    followers: listFollowers,
+    following: listFollowing,
+    followersTotal,
+    followingTotal,
+    isLoading: isLoadingList,
+    fetchFollowers,
+    fetchFollowing,
+    reset: resetList,
+  } = useFollowersFollowing();
 
   const [profile, setProfile] = useState<UserProfileData | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -157,6 +169,12 @@ export default function UserProfileScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Modal state for followers/following list ───────────────────────────────
+  const [listModalVisible, setListModalVisible] = useState(false);
+  const [listModalType, setListModalType] = useState<"followers" | "following">(
+    "followers",
+  );
 
   // Fetch initial profile data
   useEffect(() => {
@@ -238,6 +256,32 @@ export default function UserProfileScreen({
     }
   };
 
+  // ── Handle list modal opens ────────────────────────────────────────────────
+
+  const handleFollowersPress = async () => {
+    setListModalType("followers");
+    setListModalVisible(true);
+    await fetchFollowers(username);
+  };
+
+  const handleFollowingPress = async () => {
+    setListModalType("following");
+    setListModalVisible(true);
+    await fetchFollowing(username);
+  };
+
+  const handleListModalClose = () => {
+    setListModalVisible(false);
+    resetList();
+  };
+
+  const handleSelectUser = (selectedUsername: string) => {
+    // Navigate to the selected user's profile
+    // This would typically navigate to another UserProfileScreen instance
+    // For now, just a placeholder
+    console.log("Selected user:", selectedUsername);
+  };
+
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const photos: string[] = profile?.photos?.length
@@ -262,7 +306,7 @@ export default function UserProfileScreen({
           onPress={onBack}
           activeOpacity={0.8}
         >
-          <ArrowLeft size={20} color={C.text} strokeWidth={2.5} />
+          <ArrowLeft size={28} color={C.text} strokeWidth={2.5} />
         </TouchableOpacity>
       )}
 
@@ -279,42 +323,61 @@ export default function UserProfileScreen({
           </TouchableOpacity>
         </View>
       ) : profile ? (
-        <ProfileBase
-          mode="other"
-          firstName={profile.firstName || "User"}
-          lastName={profile.lastName || ""}
-          username={profile.userName}
-          // Carousel — multi-photo if available, single fallback
-          photos={photos.length > 0 ? photos : undefined}
-          photoUrl={profile.profilePhoto?.url}
-          bio={profile.bio}
-          // Interest tiles
-          interests={interests}
-          // Social badges in hero
-          socialLinks={socialLinks}
-          preferredLanguages={profile.preferredLanguages ?? []}
-          locationLabel={locationToLabel(profile.lastKnownLocation)}
-          memberSince={profile.memberSince}
-          responseRate={profile.responseRate}
-          followingCount={profile.followingCount}
-          followerCount={followerCount}
-          participatedEventsCount={profile.participatedEventsCount}
-          isFollowing={isFollowing}
-          recentEvents={MOCK_RECENT_EVENTS}
-          refreshing={refreshing}
-          onRefresh={fetchUserProfile}
-          onFollowPress={handleFollowPress}
-          onMessagePress={() => {
-            /* TODO: navigate to chat */
-          }}
-          onClosePress={onBack}
-          onMorePress={() => {
-            /* TODO: show options sheet */
-          }}
-          onSeeAllActivityPress={() => {
-            /* TODO: full activity feed */
-          }}
-        />
+        <>
+          <ProfileBase
+            mode="other"
+            firstName={profile.firstName || "User"}
+            lastName={profile.lastName || ""}
+            username={profile.userName}
+            // Carousel — multi-photo if available, single fallback
+            photos={photos.length > 0 ? photos : undefined}
+            photoUrl={profile.profilePhoto?.url}
+            bio={profile.bio}
+            // Interest tiles
+            interests={interests}
+            // Social badges in hero
+            socialLinks={socialLinks}
+            preferredLanguages={profile.preferredLanguages ?? []}
+            locationLabel={locationToLabel(profile.lastKnownLocation)}
+            memberSince={profile.memberSince}
+            responseRate={profile.responseRate}
+            followingCount={profile.followingCount}
+            followerCount={followerCount}
+            participatedEventsCount={profile.participatedEventsCount}
+            isFollowing={isFollowing}
+            recentEvents={MOCK_RECENT_EVENTS}
+            refreshing={refreshing}
+            onRefresh={fetchUserProfile}
+            onFollowPress={handleFollowPress}
+            onFollowersPress={handleFollowersPress}
+            onFollowingPress={handleFollowingPress}
+            onMessagePress={() => {
+              /* TODO: navigate to chat */
+            }}
+            onClosePress={onBack}
+            onMorePress={() => {
+              /* TODO: show options sheet */
+            }}
+            onSeeAllActivityPress={() => {
+              /* TODO: full activity feed */
+            }}
+          />
+
+          {/* ── Followers/Following Modal ── */}
+          <UserListModal
+            visible={listModalVisible}
+            onClose={handleListModalClose}
+            participants={
+              listModalType === "followers" ? listFollowers : listFollowing
+            }
+            total={
+              listModalType === "followers" ? followersTotal : followingTotal
+            }
+            isLoading={isLoadingList}
+            title={listModalType === "followers" ? "FOLLOWERS" : "FOLLOWING"}
+            onSelectUser={handleSelectUser}
+          />
+        </>
       ) : null}
     </Modal>
   );

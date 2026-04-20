@@ -1,4 +1,4 @@
-// components/UserListModal.tsx
+// components/UserListModal.tsx — Instagram-style attendees list modal
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
@@ -14,14 +14,14 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 const { width, height } = Dimensions.get("window");
 
 const C = {
   accent: "#FF6B58",
+  accentLight: "#FF8A73",
   ink: "#0F172A",
   mid: "#64748B",
   muted: "#94A3B8",
@@ -126,9 +126,17 @@ function SkeletonRow() {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 650, useNativeDriver: true }),
-      ])
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.4,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
     ).start();
   }, []);
 
@@ -136,8 +144,12 @@ function SkeletonRow() {
     <Animated.View style={[S.row, { opacity: pulse }]}>
       <View style={[S.skelAvatar, { backgroundColor: C.divider }]} />
       <View style={S.skelTextBlock}>
-        <View style={[S.skelLine, { width: "46%", backgroundColor: C.divider }]} />
-        <View style={[S.skelLine, { width: "28%", backgroundColor: C.divider }]} />
+        <View
+          style={[S.skelLine, { width: "46%", backgroundColor: C.divider }]}
+        />
+        <View
+          style={[S.skelLine, { width: "28%", backgroundColor: C.divider }]}
+        />
       </View>
     </Animated.View>
   );
@@ -152,27 +164,48 @@ interface UserRowProps {
 }
 
 function UserRow({ participant, accentColor, onPress }: UserRowProps) {
+  const pressOpacity = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.timing(pressOpacity, {
+      toValue: 0.7,
+      duration: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.timing(pressOpacity, {
+      toValue: 1,
+      duration: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
   return (
-    <TouchableOpacity
-      activeOpacity={0.65}
-      onPress={onPress}
-      style={S.row}
-    >
-      <Avatar participant={participant} />
+    <Animated.View style={[S.row, { opacity: pressOpacity }]}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={S.rowContent}
+      >
+        <Avatar participant={participant} />
 
-      <View style={S.textBlock}>
-        <Text style={S.displayName} numberOfLines={1}>
-          {participant.displayName}
-        </Text>
-        <Text style={S.username} numberOfLines={1}>
-          @{participant.username}
-        </Text>
-      </View>
+        <View style={S.textBlock}>
+          <Text style={S.displayName} numberOfLines={1}>
+            {participant.displayName}
+          </Text>
+          <Text style={S.username} numberOfLines={1}>
+            @{participant.username}
+          </Text>
+        </View>
 
-      <View style={[S.chip, { backgroundColor: accentColor + "15" }]}>
-        <Ionicons name="chevron-forward" size={13} color={accentColor} />
-      </View>
-    </TouchableOpacity>
+        <View style={[S.chip, { backgroundColor: accentColor + "15" }]}>
+          <Ionicons name="chevron-forward" size={13} color={accentColor} />
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -230,7 +263,7 @@ export default function UserListModal({
       ? participants.filter(
           (p) =>
             p.displayName.toLowerCase().includes(search.toLowerCase()) ||
-            p.username.toLowerCase().includes(search.toLowerCase())
+            p.username.toLowerCase().includes(search.toLowerCase()),
         )
       : participants;
 
@@ -265,11 +298,15 @@ export default function UserListModal({
           <View style={S.header}>
             <View style={S.titleBlock}>
               <Text style={[S.title, { color: accentColor }]}>{title}</Text>
-              <View style={[S.titleUnderline, { backgroundColor: accentColor }]} />
+              <View
+                style={[S.titleUnderline, { backgroundColor: accentColor }]}
+              />
             </View>
 
             <View style={S.headerRight}>
-              <View style={[S.countPill, { backgroundColor: accentColor + "15" }]}>
+              <View
+                style={[S.countPill, { backgroundColor: accentColor + "15" }]}
+              >
                 <Text style={[S.countText, { color: accentColor }]}>
                   {isLoading ? "—" : total}
                 </Text>
@@ -288,9 +325,11 @@ export default function UserListModal({
           <View style={S.boldDivider} />
 
           {/* ── Search ── */}
-          {!isLoading && participants.length > 5 && (
+          {!isLoading && participants.length > 4 && (
             <View style={S.searchWrap}>
-              <View style={[S.searchInner, { borderColor: accentColor + "35" }]}>
+              <View
+                style={[S.searchInner, { borderColor: accentColor + "35" }]}
+              >
                 <Ionicons name="search-outline" size={14} color={C.muted} />
                 <TextInput
                   style={S.searchInput}
@@ -317,9 +356,13 @@ export default function UserListModal({
           {/* ── List ── */}
           <ScrollView
             style={S.list}
-            contentContainerStyle={[S.listContent, { paddingHorizontal: H_PAD }]}
+            contentContainerStyle={[
+              S.listContent,
+              { paddingHorizontal: H_PAD },
+            ]}
             keyboardShouldPersistTaps="handled"
             bounces={false}
+            showsVerticalScrollIndicator={false}
           >
             {/* Skeletons */}
             {isLoading &&
@@ -333,8 +376,17 @@ export default function UserListModal({
             {/* Empty */}
             {!isLoading && filtered.length === 0 && (
               <View style={S.empty}>
-                <View style={[S.emptyIconWrap, { backgroundColor: accentColor + "12" }]}>
-                  <Ionicons name="people-outline" size={26} color={accentColor} />
+                <View
+                  style={[
+                    S.emptyIconWrap,
+                    { backgroundColor: accentColor + "12" },
+                  ]}
+                >
+                  <Ionicons
+                    name="people-outline"
+                    size={26}
+                    color={accentColor}
+                  />
                 </View>
                 <Text style={S.emptyTitle}>Nobody here yet</Text>
                 {search.length > 0 && (
@@ -480,6 +532,12 @@ const S = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
+  },
+  rowContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    width: "100%",
   },
   rowDivider: {
     height: StyleSheet.hairlineWidth * 2,

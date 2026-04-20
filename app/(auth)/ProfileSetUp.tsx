@@ -5,19 +5,19 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useAuth } from "../../hooks/context/AuthContext";
 
@@ -315,16 +315,20 @@ export default function ProfileSetupScreen() {
         formData.append("Bio", fullBio);
       }
 
-      // 3. PreferredLanguages — one entry per language (multipart array)
+      // 3. Interests — one entry per interest (multipart array)
+      selectedTags.forEach((tag) => formData.append("Interests", tag));
+
+      // 4. PreferredLanguages — one entry per language (multipart array)
       const langs = selectedLangs.length > 0 ? selectedLangs : ["en"];
       langs.forEach((lang) => formData.append("PreferredLanguages", lang));
 
-      // 4. Timezone
+      // 5. Timezone
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       formData.append("PreferredTimezone", timezone);
 
       console.log("[ProfileSetup] PUT /api/Users/" + user.userName);
       console.log("[ProfileSetup] langs:", langs);
+      console.log("[ProfileSetup] interests:", selectedTags);
       console.log("[ProfileSetup] bio:", fullBio);
       console.log("[ProfileSetup] avatar:", avatarFile?.uri ?? "none");
 

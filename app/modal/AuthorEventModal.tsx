@@ -4,50 +4,50 @@
 
 import { updateEvent } from "@/hooks/events/getEvents";
 import {
-  useCancelEvent,
-  useDeleteEvent,
-  useKickParticipant,
-  useStartEvent,
+    useCancelEvent,
+    useDeleteEvent,
+    useKickParticipant,
+    useStartEvent,
 } from "@/hooks/events/useEventActions";
 import { formatEventTime, getTimeLabel } from "@/scripts/timeUtils";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Image,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
 import {
-  ACCENT_BG,
-  AMBER_BG,
-  Avatar,
-  BaseEventModalProps,
-  C,
-  DISMISS_THRESHOLD,
-  Divider,
-  EventData,
-  EyebrowLabel,
-  GREEN_BG,
-  H_PAD,
-  MODAL_HEIGHT,
-  openMaps,
-  Participant,
-  Pill,
-  RED_BG,
-  SCREEN_HEIGHT,
-  sharedS,
+    ACCENT_BG,
+    AMBER_BG,
+    Avatar,
+    BaseEventModalProps,
+    C,
+    DISMISS_THRESHOLD,
+    Divider,
+    EventData,
+    EyebrowLabel,
+    GREEN_BG,
+    H_PAD,
+    MODAL_HEIGHT,
+    openMaps,
+    Participant,
+    Pill,
+    RED_BG,
+    SCREEN_HEIGHT,
+    sharedS,
 } from "../../components/layout/EventModalBase";
 import UserProfileModal from "../modal/UserProfileModal";
 import UserListModal from "./UserListModal";
@@ -1290,11 +1290,22 @@ export default function AuthorEventModal({
       {/* Participant list */}
       <UserListModal
         visible={showParticipants}
-        participants={event?.participantsPreview ?? []}
+        participants={(event?.participantsPreview ?? [])
+          .map((p: any) => ({
+            username: p.username ?? p.userName ?? "",
+            displayName:
+              p.displayName || p.display_name || p.firstName
+                ? `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim()
+                : (p.username ?? p.userName ?? ""),
+            profilePhoto: p.profilePhoto ?? p.profile_photo ?? null,
+            bio: p.bio ?? null,
+          }))
+          .filter((p) => p.username)}
         total={event?.attendees ?? 0}
+        isLoading={false}
+        title="ATTENDING"
         onClose={() => setShowParticipants(false)}
         accentColor={C.accent}
-        accentBg={ACCENT_BG}
         onSelectUser={handleSelectUser}
       />
 

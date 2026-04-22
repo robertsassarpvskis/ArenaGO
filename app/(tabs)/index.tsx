@@ -11,7 +11,6 @@ import {
 } from "@/hooks/events/useParticipatedEvents";
 import { useHapticFeedback } from "@/hooks/useHapticFeedback";
 import { useLocation } from "@/hooks/useLocation";
-import { getTimeLabel, formatEventTime } from "@/scripts/timeUtils";
 import { BlurView } from "expo-blur";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -79,7 +78,6 @@ interface ListItem {
 }
 
 // ─── DEMO: Hardcoded paid event card ─────────────────────────────────────────
-// Remove once real price data flows from the API.
 const DEMO_PAID_CARD = (
   <EventCard
     id="demo-paid-001"
@@ -129,47 +127,91 @@ async function getUserLikedEvents(
   }
 }
 
+// ─── Custom interest resolver ─────────────────────────────────────────────────
+// The API uses interest.name = "Custom" as a sentinel. The real user-defined
+// label lives in event.customInterestName. This helper resolves the display
+// name and builds a corrected interest object so every consumer (EventCard,
+// modals, badges) shows the right label without duplicating logic.
+function resolveInterest(event: ApiEvent): {
+  resolvedCategory: string;
+  resolvedInterest: ApiEvent["interest"] | undefined;
+} {
+  const isCustom =
+    event.interest?.name?.toLowerCase() === "custom" ||
+    !!event.customInterestName?.trim();
+
+  const customName = event.customInterestName?.trim() || undefined;
+
+  if (isCustom && customName && event.interest) {
+    return {
+      resolvedCategory: customName,
+      resolvedInterest: {
+        ...event.interest,
+        name: customName, // override "Custom" sentinel with real name
+        // label is not on the API type but InterestBadge reads it via spread
+      },
+    };
+  }
+
+  return {
+    resolvedCategory: event.interest?.name ?? "General",
+    resolvedInterest: event.interest,
+  };
+}
+
 /** Map an ApiEvent to the props EventCard expects */
 const mapEventToCardProps = (
   event: ApiEvent,
   isSaved: boolean = false,
   onSave: () => void = () => {},
-) => ({
-  id: event.eventId,
-  title: event.title,
-  image: event.thumbnail ?? undefined,
-  interest: event.interest,
-  category: event.interest?.name ?? "General",
-  categoryIconUrl: event.interest?.icon?.url,
-  // EventCard accepts a unix timestamp (seconds)
-  time: event.startScheduledTo
-    ? Math.floor(new Date(event.startScheduledTo).getTime() / 1000)
-    : undefined,
-  attendees: event.participantsSummary?.currentCount ?? 0,
-  location: event.locationName ?? "Location TBA",
-  isSaved,
-  onSave,
-});
+) => {
+  const { resolvedCategory, resolvedInterest } = resolveInterest(event);
+  return {
+    id: event.eventId,
+    title: event.title,
+    image: event.thumbnail ?? undefined,
+    // Pass the resolved interest so EventCard's InterestBadge shows the right name
+    interest: resolvedInterest as any,
+    // Also pass customInterestName so EventCard's internal logic can apply it
+    customInterestName: event.customInterestName ?? undefined,
+    category: resolvedCategory,
+    categoryIconUrl: event.interest?.icon?.url,
+    time: event.startScheduledTo
+      ? Math.floor(new Date(event.startScheduledTo).getTime() / 1000)
+      : undefined,
+    attendees: event.participantsSummary?.currentCount ?? 0,
+    location: event.locationName ?? "Location TBA",
+    isSaved,
+    onSave,
+  };
+};
 
 /** Convert an ApiEvent to the shape expected by the detail modals */
-const buildEventShape = (event: ApiEvent) => ({
-  id: event.eventId,
-  description: event.description,
-  image: event.thumbnail ?? undefined,
-  title: event.title,
-  category: event.interest?.name ?? "General",
-  interest: event.interest,
-  time: event.startScheduledTo,
-  location: event.location ?? "Location TBA",
-  locationName: event.locationName ?? "Location TBA",
-  distance: "—",
-  author: event.author ? { username: event.author.username } : null,
-  attendees: event.participantsSummary.currentCount,
-  spotsLeft: event.participantsSummary.maxCount ?? 0,
-  maxParticipants: event.participantsSummary.maxCount ?? null,
-  participantsPreview: event.participantsSummary.participantsPreview,
-  status: (event as any).status ?? "active",
-});
+const buildEventShape = (event: ApiEvent) => {
+  const { resolvedCategory, resolvedInterest } = resolveInterest(event);
+  return {
+    id: event.eventId,
+    description: event.description,
+    image: event.thumbnail ?? undefined,
+    title: event.title,
+    // Use the resolved category so modals never display "Custom"
+    category: resolvedCategory,
+    // Pass the patched interest object so InterestBadge inside modals is correct
+    interest: resolvedInterest,
+    // Also expose the raw customInterestName for any modal that might need it
+    customInterestName: event.customInterestName ?? null,
+    time: event.startScheduledTo,
+    location: event.location ?? "Location TBA",
+    locationName: event.locationName ?? "Location TBA",
+    distance: "—",
+    author: event.author ? { username: event.author.username } : null,
+    attendees: event.participantsSummary.currentCount,
+    spotsLeft: event.participantsSummary.maxCount ?? 0,
+    maxParticipants: event.participantsSummary.maxCount ?? null,
+    participantsPreview: event.participantsSummary.participantsPreview,
+    status: (event as any).status ?? "active",
+  };
+};
 
 /** Convert an ISO date string to a unix timestamp in seconds */
 function isoToTimestamp(dateStr?: string): number | undefined {
@@ -245,7 +287,9 @@ export default function EventScreen() {
   const [myItems, setMyItems] = useState<ListItem[]>([]);
   const [nearbyItems, setNearbyItems] = useState<ListItem[]>([]);
   const [allEvents, setAllEvents] = useState<ApiEvent[]>([]);
-  const [allParticipations, setAllParticipations] = useState<Participation[]>([]);
+  const [allParticipations, setAllParticipations] = useState<Participation[]>(
+    [],
+  );
   const [allCreatedIds, setAllCreatedIds] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -329,7 +373,7 @@ export default function EventScreen() {
       const [createdEvents, recommended, participations, likedEvents] =
         await Promise.all([
           getUserCreatedEvents(user?.userName || "", user?.accessToken || ""),
-          getRecommendedEvents(user?.accessToken || "", 20),
+          getRecommendedEvents(user?.accessToken || "", 50),
           getUserParticipatedEvents(
             user?.userName || "",
             user?.accessToken || "",
@@ -403,7 +447,11 @@ export default function EventScreen() {
     if (isEventSaved(selectedEvent.eventId)) {
       unsaveEvent(selectedEvent.eventId);
     } else {
-      saveEvent(selectedEvent.eventId, selectedEvent.title, user?.accessToken || "");
+      saveEvent(
+        selectedEvent.eventId,
+        selectedEvent.title,
+        user?.accessToken || "",
+      );
     }
   };
 
@@ -480,10 +528,10 @@ export default function EventScreen() {
     ? selectedEvent.author?.username === user?.userName
       ? "author"
       : allParticipations.some(
-          (p) => p.resourceSummary.eventId === selectedEvent.eventId,
-        )
-      ? "participant"
-      : "basic"
+            (p) => p.resourceSummary.eventId === selectedEvent.eventId,
+          )
+        ? "participant"
+        : "basic"
     : "basic";
 
   // ─── Render helpers ────────────────────────────────────────────────────────
@@ -579,12 +627,10 @@ export default function EventScreen() {
           if (section.type === "myEvents") {
             return (
               <>
-                <MyEventsStrip items={item as ListItem[]} onPress={handleEventPress} />
-
-                {/* ── DEMO: Paid ticket card ────────────────────────────────
-                    Shows Variant D (ticket stub) with a hardcoded paid event.
-                    Remove this block once real price data flows from the API.
-                ─────────────────────────────────────────────────────────── */}
+                <MyEventsStrip
+                  items={item as ListItem[]}
+                  onPress={handleEventPress}
+                />
                 <View style={s.demoPaidSection}>
                   <View style={s.nearbyHeader}>
                     <Text style={s.nearbyLabel}>FEATURED</Text>

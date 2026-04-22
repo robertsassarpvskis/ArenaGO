@@ -49,11 +49,14 @@ export function useCreateEvent(token: string | null) {
       );
       formData.append("StartScheduledTo", payload.startScheduledTo);
 
-      // ── Interest: mutually exclusive — either a real InterestId OR a custom name
-      // Never send both; sending InterestId alongside CustomInterestName causes 400
-      if (payload.interestId && payload.interestId.trim()) {
+      // ── Interest: always send InterestId when provided.
+      // For custom category: send the fixed custom InterestId + CustomInterestName together.
+      // For preset category: send only the selected InterestId.
+      if (payload.interestId?.trim()) {
         formData.append("InterestId", payload.interestId.trim());
-      } else if (payload.customInterestName?.trim()) {
+      }
+
+      if (payload.customInterestName?.trim()) {
         formData.append(
           "CustomInterestName",
           payload.customInterestName.trim(),

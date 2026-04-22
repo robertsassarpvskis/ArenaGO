@@ -29,6 +29,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -61,6 +62,8 @@ const C = {
 } as const;
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
+
+const CUSTOM_INTEREST_ID = "1773257122869-87f9877972954bdb85e31e81f426d6f7";
 
 const FALLBACK_CATEGORIES: CategoryOption[] = [
   { id: "1", label: "Sports", color: { r: 59, g: 130, b: 246, a: 1 } },
@@ -142,7 +145,6 @@ export default function CreateEvent() {
   // Animated
   const titleFocusAnim = useRef(new Animated.Value(0)).current;
   const customCatFocusAnim = useRef(new Animated.Value(0)).current;
-  const customToggleAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchInterests(user?.accessToken || null).then((res) => {
@@ -150,21 +152,10 @@ export default function CreateEvent() {
     });
   }, [user?.accessToken]);
 
-  // Animate custom category panel in/out
   useEffect(() => {
-    Animated.spring(customToggleAnim, {
-      toValue: useCustomCategory ? 1 : 0,
-      useNativeDriver: false,
-      tension: 140,
-      friction: 18,
-    }).start();
-
-    // When toggling off custom, clear the text and restore category selection
     if (!useCustomCategory) {
       setCustomCategoryText("");
-    }
-    // When toggling on custom, clear the selected preset category
-    if (useCustomCategory) {
+    } else {
       setCategory("");
     }
   }, [useCustomCategory]);
@@ -181,10 +172,8 @@ export default function CreateEvent() {
     if (currentStep === 0) {
       if (!eventTitle.trim()) return false;
       if (useCustomCategory) {
-        // Custom mode: must have typed a tag
         return customCategoryText.trim().length > 0;
       } else {
-        // Preset mode: must have selected a category
         return category !== "";
       }
     }
@@ -336,8 +325,9 @@ export default function CreateEvent() {
     const payload: CreateEventPayload = {
       title: eventTitle.trim(),
       description: description.trim() || undefined,
-      // Mutually exclusive: either a real interestId OR a customInterestName — never both
-      interestId: !useCustomCategory && category ? category : undefined,
+      interestId: useCustomCategory
+        ? CUSTOM_INTEREST_ID
+        : category || undefined,
       customInterestName:
         useCustomCategory && customCategoryText.trim()
           ? customCategoryText.trim()
@@ -426,54 +416,27 @@ export default function CreateEvent() {
           <Text style={styles.charCount}>{eventTitle.length} / 60</Text>
         </View>
 
-        {/* ── Mode toggle: Preset vs Custom ── */}
+        {/* ── Category label + iOS switch ── */}
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Category</Text>
-          <View style={styles.modeToggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.modeToggleBtn,
-                !useCustomCategory && styles.modeToggleBtnActive,
-              ]}
-              onPress={() => setUseCustomCategory(false)}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="grid-outline"
-                size={13}
-                color={!useCustomCategory ? "#fff" : C.textMuted}
-              />
+          <View style={styles.categoryHeaderRow}>
+            <Text style={styles.inputLabel}>Category</Text>
+            <View style={styles.switchRow}>
               <Text
                 style={[
-                  styles.modeToggleBtnText,
-                  !useCustomCategory && styles.modeToggleBtnTextActive,
-                ]}
-              >
-                Preset
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.modeToggleBtn,
-                useCustomCategory && styles.modeToggleBtnActive,
-              ]}
-              onPress={() => setUseCustomCategory(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="pencil-outline"
-                size={13}
-                color={useCustomCategory ? "#fff" : C.textMuted}
-              />
-              <Text
-                style={[
-                  styles.modeToggleBtnText,
-                  useCustomCategory && styles.modeToggleBtnTextActive,
+                  styles.switchLabel,
+                  useCustomCategory && styles.switchLabelActive,
                 ]}
               >
                 Custom
               </Text>
-            </TouchableOpacity>
+              <Switch
+                value={useCustomCategory}
+                onValueChange={setUseCustomCategory}
+                trackColor={{ false: C.border, true: C.coral }}
+                thumbColor={useCustomCategory ? "#fff" : C.surface}
+                ios_backgroundColor={C.border}
+              />
+            </View>
           </View>
         </View>
 
@@ -1080,14 +1043,16 @@ export default function CreateEvent() {
 
       {/* ── Top bar ── */}
       <View style={styles.topBar}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() =>
-            currentStep > 0 ? goToStep(currentStep - 1) : navigation.goBack()
-          }
-        >
-          <Ionicons name="chevron-back" size={19} color={C.text} />
-        </TouchableOpacity>
+        {currentStep > 0 ? (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => goToStep(currentStep - 1)}
+          >
+            <Ionicons name="chevron-back" size={19} color={C.text} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backBtnPlaceholder} />
+        )}
         <View style={styles.topCenter}>
           <Text style={styles.topTitle}>New event</Text>
         </View>
@@ -1253,6 +1218,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  backBtnPlaceholder: {
+    width: 34,
+    height: 34,
+  },
   topCenter: { flex: 1, alignItems: "center" },
   topTitle: {
     fontSize: 15,
@@ -1373,30 +1342,25 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  // ── Mode toggle
-  modeToggleRow: {
-    flexDirection: "row",
-    backgroundColor: C.surfaceAlt,
-    borderRadius: 10,
-    padding: 3,
-    gap: 3,
-  },
-  modeToggleBtn: {
-    flex: 1,
+  // ── Category header with switch
+  categoryHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 8,
+    justifyContent: "space-between",
   },
-  modeToggleBtnActive: { backgroundColor: C.ink },
-  modeToggleBtnText: {
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  switchLabel: {
     fontSize: 13,
     fontWeight: "600",
     color: C.textMuted,
   },
-  modeToggleBtnTextActive: { color: "#fff" },
+  switchLabelActive: {
+    color: C.coral,
+  },
 
   // ── Category dropdown trigger
   dropdownTrigger: {

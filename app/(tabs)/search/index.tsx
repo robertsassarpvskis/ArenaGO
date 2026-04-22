@@ -87,32 +87,14 @@ interface User {
 
 /* ===================== AVATAR COLORS ===================== */
 
-const AVATAR_PALETTES = [
-  { bg: "rgba(232,84,58,0.08)", border: "rgba(232,84,58,0.18)", text: C.coral },
-  {
-    bg: "rgba(59,139,212,0.08)",
-    border: "rgba(59,139,212,0.18)",
-    text: "#3B8BD4",
-  },
-  {
-    bg: "rgba(83,74,183,0.08)",
-    border: "rgba(83,74,183,0.18)",
-    text: "#534AB7",
-  },
-  {
-    bg: "rgba(29,158,117,0.08)",
-    border: "rgba(29,158,117,0.18)",
-    text: "#1D9E75",
-  },
-  {
-    bg: "rgba(186,117,23,0.08)",
-    border: "rgba(186,117,23,0.18)",
-    text: "#BA7517",
-  },
-];
+// Neutral palette — no colorful initials
+const AVATAR_NEUTRAL = {
+  bg: C.surfaceAlt,
+  border: C.border,
+  text: C.textSub,
+};
 
-const avatarPalette = (username: string) =>
-  AVATAR_PALETTES[username.charCodeAt(0) % AVATAR_PALETTES.length];
+const avatarPalette = (_username: string) => AVATAR_NEUTRAL;
 
 /* ===================== SCREEN ===================== */
 
@@ -321,51 +303,55 @@ export default function UserSearchScreen() {
     outputRange: [C.border, C.coral],
   });
 
+  /* ===================== SCROLLABLE HEADER ===================== */
+
+  const ListHeader = (
+    <View style={styles.topSection}>
+      {/* Title */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Find people</Text>
+      </View>
+
+      {/* Search bar */}
+      <Animated.View
+        style={[styles.searchBar, { borderColor: animatedBorderColor }]}
+      >
+        <Ionicons
+          name="search"
+          size={16}
+          color={focused ? C.coral : C.textMuted}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Name, username, language…"
+          placeholderTextColor={C.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          maxLength={64}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          returnKeyType="search"
+        />
+        {searchQuery.length > 0 && (
+          <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+            <Ionicons name="close-circle" size={16} color={C.textMuted} />
+          </Pressable>
+        )}
+      </Animated.View>
+    </View>
+  );
+
   /* ===================== RENDER ===================== */
 
   return (
     <>
       <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Header + Search — lives outside FlatList so keyboard never collapses */}
-        <View style={styles.topSection}>
-          {/* Title */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Find people</Text>
-          </View>
-
-          {/* Search bar */}
-          <Animated.View
-            style={[styles.searchBar, { borderColor: animatedBorderColor }]}
-          >
-            <Ionicons
-              name="search"
-              size={16}
-              color={focused ? C.coral : C.textMuted}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Name, username, language…"
-              placeholderTextColor={C.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              maxLength={64}
-              onFocus={onFocus}
-              onBlur={onBlur}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
-                <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </Pressable>
-            )}
-          </Animated.View>
-        </View>
-
-        {/* List */}
+        {/* List — header + search scroll together with results */}
         <FlatList
           data={loading || error ? [] : filteredUsers}
           keyExtractor={(i) => i.id}
           renderItem={renderUser}
+          ListHeaderComponent={ListHeader}
           ListFooterComponent={renderFooter()}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -451,7 +437,6 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingHorizontal: 12,
-    paddingTop: 6,
     paddingBottom: 100,
   },
 

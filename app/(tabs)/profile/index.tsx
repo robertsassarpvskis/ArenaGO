@@ -1,4 +1,8 @@
 // app/(tabs)/MyProfileScreen.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// Own-user profile screen.
+// Now fetches real participated + created events via useUserEvents.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import UserListModal from "@/app/modal/UserListModal";
 import ProfileBase, {
@@ -8,11 +12,9 @@ import ProfileBase, {
   SocialLink,
 } from "@/components/layout/ProfileBase";
 import { useAuth } from "@/hooks/context/AuthContext";
+import { useUserEvents } from "@/hooks/events/useUserEvents";
 import { useFollowersFollowing } from "@/hooks/profile/useFollowersFollowing";
-import {
-  useParticipatedEventsFull,
-  useProfile,
-} from "@/hooks/profile/useProfile";
+import { useProfile } from "@/hooks/profile/useProfile";
 import { useHapticFeedback } from "@/hooks/useHapticFeedback";
 import { LogOut } from "lucide-react-native";
 import React, { useState } from "react";
@@ -22,16 +24,19 @@ export default function MyProfileScreen() {
   const { user, logout } = useAuth();
   const { impact, notification } = useHapticFeedback();
 
-  const { profile, refetch } = useProfile(
+  const { profile, refetch: refetchProfile } = useProfile(
     user?.userName ?? "",
     user?.accessToken,
   );
 
-  // ── Real participated events ───────────────────────────────────────────────
-  const { events: participatedEvents } = useParticipatedEventsFull(
+  const {
+    events: userEvents,
+    isLoading: eventsLoading,
+    refetch: refetchEvents,
+  } = useUserEvents(
     user?.userName ?? "",
     user?.accessToken,
-    6, // show up to 6 cards in the activity section
+    Boolean(user?.userName && user?.accessToken),
   );
 
   const {
@@ -46,17 +51,17 @@ export default function MyProfileScreen() {
   } = useFollowersFollowing();
 
   const [refreshing, setRefreshing] = useState(false);
-
-  // ── Modal state ────────────────────────────────────────────────────────────
   const [listModalVisible, setListModalVisible] = useState(false);
   const [listModalType, setListModalType] = useState<"followers" | "following">(
     "followers",
   );
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
   const handleRefresh = async () => {
     await impact("medium");
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetchProfile(), refetchEvents()]);
     setRefreshing(false);
     await notification("success");
   };
@@ -95,18 +100,19 @@ export default function MyProfileScreen() {
   };
 
   const handleSelectUser = (selectedUsername: string) => {
+    // TODO: navigate to UserProfileScreen with selectedUsername
     console.log("Selected user:", selectedUsername);
-    // TODO: navigate to UserProfileScreen
   };
 
-  // ── Derived values ─────────────────────────────────────────────────────────
+  // ── Derived data ───────────────────────────────────────────────────────────
+
   const firstName = profile?.firstName ?? "Alex";
   const lastName = profile?.lastName ?? "Rivers";
   const username = user?.userName ?? "alex_rivers";
 
-  const MOCK_PHOTOS: string[] = [
-    profile?.profilePhoto?.url ?? "",
-  ].filter(Boolean);
+  const MOCK_PHOTOS: string[] = [profile?.profilePhoto?.url ?? ""].filter(
+    Boolean,
+  );
 
   const userInterests: Interest[] = (profile?.interests ?? []).map(
     (interest) => ({
@@ -122,19 +128,17 @@ export default function MyProfileScreen() {
     { platform: "twitter", handle: "alex_rivers" },
   ];
 
-  // ── Map participatedEvents → ProfileEvent shape for ProfileBase ────────────
-  // ProfileBase.recentEvents uses the ProfileEvent type (icon, name, date, etc.)
-  // We map our real data into that shape so ProfileBase renders MyEventCard correctly.
-  const recentEvents: ProfileEvent[] = participatedEvents.map((ev) => ({
-    id: ev.eventId as any,
-    icon: "📍",
-    name: ev.title,
-    // ProfileEvent.date is a display string — format from ISO
+  // ── Map real API events → ProfileEvent shape ───────────────────────────────
+  const recentEvents: ProfileEvent[] = userEvents.map((ev) => ({
+    id: ev.eventId,
+    name: ev.eventName,
+    icon: ev.kind === "created" ? "⭐" : "🎟️",
+    // date/time are display placeholders — real data comes via _startScheduledTo
     date: ev.startScheduledTo
       ? new Date(ev.startScheduledTo).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
-        }).toUpperCase()
+        })
       : "TBD",
     time: ev.startScheduledTo
       ? new Date(ev.startScheduledTo).toLocaleTimeString("en-US", {
@@ -143,17 +147,18 @@ export default function MyProfileScreen() {
           hour12: false,
         })
       : "",
-    participants: ev.currentCount,
-    maxParticipants: ev.maxCount,
-    category: "sport", // fallback — categoryName is passed separately via locationName hack
-    // We attach extra data as non-standard fields for the MyEventCard renderer
+    participants: ev.currentCount ?? 0,
+    maxParticipants: ev.maxCount ?? 0,
+    category: "sport",
+    // ── Real fields consumed directly by MyEventCard ──────────────────────
     _startScheduledTo: ev.startScheduledTo,
     _locationName: ev.locationName,
     _categoryName: ev.categoryName,
-    _kind: "participated" as const,
+    _kind: ev.kind,
   }));
 
   // ── Footer ─────────────────────────────────────────────────────────────────
+
   const signOutFooter = (
     <View style={footer.wrap}>
       <TouchableOpacity
@@ -187,6 +192,7 @@ export default function MyProfileScreen() {
         followerCount={profile?.followerCount ?? 312}
         participatedEventsCount={profile?.participatedEventsCount ?? 47}
         recentEvents={recentEvents}
+        eventsLoading={eventsLoading}
         refreshing={refreshing}
         onRefresh={handleRefresh}
         onFollowersPress={handleFollowersPress}

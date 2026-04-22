@@ -1,16 +1,20 @@
 // components/layout/ProfileBase.tsx
 //
-// 2026 redesign v8 — UNIFIED SCROLL SURFACE
+// 2026 redesign v9 — REAL EVENT DATA
 //
-// Recent Activity section now renders MyEventCard (full-width variant)
-// instead of the old ActivityCard. The ProfileEvent type is extended with
-// optional _* fields that carry real API data when available.
+// Changes from v8:
+//  • Accepts `eventsLoading` prop — shows skeleton cards while events load.
+//  • ProfileEvent._kind, ._startScheduledTo, ._locationName, ._categoryName
+//    are forwarded directly to MyEventCard (full-width).
+//  • Empty state shown when events load but none exist.
+// ─────────────────────────────────────────────────────────────────────────────
 
 import InterestBadge from "@/components/common/InterestBadge";
 import MyEventCard from "@/components/common/event/cards/MyEventCard";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowLeft,
+  Calendar,
   Edit3,
   Flame,
   Globe,
@@ -62,17 +66,11 @@ export const C = {
   heroBg: "#1A1A1A",
 } as const;
 
-// ─── Simple muted sticker color palette ───────────────────────────────────────
-
-const STICKER_COLORS = [
-  { bg: "#E8E6E0", border: "#B5B2AC", text: "#111111" },
-];
+const STICKER_COLORS = [{ bg: "#E8E6E0", border: "#B5B2AC", text: "#111111" }];
 
 function getRandomStickerColor(index: number) {
   return STICKER_COLORS[index % STICKER_COLORS.length];
 }
-
-// ─── Social config ────────────────────────────────────────────────────────────
 
 const SOCIAL_CFG: Record<string, { color: string; bgLight?: string }> = {
   instagram: { color: "#E1306C", bgLight: "#E1306C14" },
@@ -84,8 +82,6 @@ const SOCIAL_CFG: Record<string, { color: string; bgLight?: string }> = {
   spotify: { color: "#1DB954", bgLight: "#1DB95414" },
 };
 
-// ─── Category colors ──────────────────────────────────────────────────────────
-
 const CAT_COLOR: Record<string, string> = {
   sport: "#FF6B58",
   social: "#6B5BF5",
@@ -94,8 +90,6 @@ const CAT_COLOR: Record<string, string> = {
   nature: "#22C55E",
   music: "#EC4899",
 };
-
-// ─── Language → flag ──────────────────────────────────────────────────────────
 
 const LANG_FLAG: Record<string, string> = {
   EN: "🇬🇧",
@@ -185,14 +179,10 @@ export interface ProfileEvent {
   maxParticipants?: number;
   imageUrl?: string;
   category?: keyof typeof CAT_COLOR;
-  // ── Real API data (attached by MyProfileScreen when available) ────────────
-  /** ISO date string — used by MyEventCard for precise time display */
+  // ── Real API data fields consumed by MyEventCard ──────────────────────────
   _startScheduledTo?: string;
-  /** Location display name */
   _locationName?: string;
-  /** Category name from interest */
   _categoryName?: string;
-  /** Whether this is a created or participated event */
   _kind?: "created" | "participated";
 }
 
@@ -225,6 +215,8 @@ export interface ProfileBaseProps {
   onSeeAllActivityPress?: () => void;
   onAddPhotoPress?: () => void;
   recentEvents?: ProfileEvent[];
+  /** When true shows skeleton cards while events are being fetched */
+  eventsLoading?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   footer?: ReactNode;
@@ -237,6 +229,7 @@ const HERO_H_WITH_PHOTO = Math.round(W * 1.1);
 const HERO_H_NO_PHOTO = Math.round(W * 0.8);
 const SIDE = 20;
 const PARALLAX_FACTOR = 0.3;
+const SKELETON_COUNT = 3;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +239,142 @@ function fmt(n?: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
 }
+
+// ─── Skeleton card ────────────────────────────────────────────────────────────
+
+function SkeletonEventCard() {
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [shimmer]);
+
+  const opacity = shimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.45, 0.85],
+  });
+
+  return (
+    <Animated.View style={[sk.card, { opacity }]}>
+      {/* Badge skeleton */}
+      <View style={sk.badge} />
+      {/* Title skeleton */}
+      <View style={sk.titleFull} />
+      <View style={sk.titleHalf} />
+      {/* Meta skeleton */}
+      <View style={sk.meta} />
+      {/* Footer skeleton */}
+      <View style={sk.footer} />
+    </Animated.View>
+  );
+}
+
+const sk = StyleSheet.create({
+  card: {
+    width: "100%",
+    backgroundColor: C.surface,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 9,
+  },
+  badge: {
+    width: 70,
+    height: 20,
+    borderRadius: 6,
+    backgroundColor: C.surfaceAlt,
+  },
+  titleFull: {
+    width: "80%",
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: C.surfaceAlt,
+  },
+  titleHalf: {
+    width: "50%",
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: C.surfaceAlt,
+  },
+  meta: {
+    width: "40%",
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: C.surfaceAlt,
+  },
+  footer: {
+    width: "60%",
+    height: 10,
+    borderRadius: 4,
+    backgroundColor: C.surfaceAlt,
+    marginTop: 4,
+  },
+});
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyEventsState({ isOwnProfile }: { isOwnProfile: boolean }) {
+  return (
+    <View style={emp.wrap}>
+      <View style={emp.iconWrap}>
+        <Calendar size={22} color={C.textMuted} strokeWidth={1.6} />
+      </View>
+      <Text style={emp.title}>No events yet</Text>
+      <Text style={emp.sub}>
+        {isOwnProfile
+          ? "Events you create or join will appear here."
+          : "This user hasn't joined any events yet."}
+      </Text>
+    </View>
+  );
+}
+
+const emp = StyleSheet.create({
+  wrap: {
+    alignItems: "center",
+    paddingVertical: 28,
+    gap: 8,
+  },
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: C.surface,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: C.textSub,
+    letterSpacing: 0.2,
+  },
+  sub: {
+    fontSize: 12,
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 220,
+  },
+});
 
 // ─── Atoms ────────────────────────────────────────────────────────────────────
 
@@ -308,6 +437,7 @@ export default function ProfileBase({
   onSeeAllActivityPress,
   onAddPhotoPress,
   recentEvents = [],
+  eventsLoading = false,
   refreshing = false,
   onRefresh,
   footer,
@@ -342,7 +472,12 @@ export default function ProfileBase({
           statusBarDarkRef.current = shouldBeDark;
           setStatusBarDark(shouldBeDark);
         }
-        if (y < -100 && !refreshTriggeredRef.current && onRefresh && !refreshing) {
+        if (
+          y < -100 &&
+          !refreshTriggeredRef.current &&
+          onRefresh &&
+          !refreshing
+        ) {
           refreshTriggeredRef.current = true;
           onRefresh();
         }
@@ -426,13 +561,19 @@ export default function ProfileBase({
         onScroll={handleScroll}
       >
         {/* ── HERO ──────────────────────────────────────────────────────── */}
-        <View style={[s.heroContainer, { height: HERO_H }]} key={`hero-${HERO_H}`}>
+        <View
+          style={[s.heroContainer, { height: HERO_H }]}
+          key={`hero-${HERO_H}`}
+        >
           <Animated.View
             style={[
               s.heroImageWrapper,
               {
                 height: HERO_H + HERO_H * PARALLAX_FACTOR,
-                transform: [{ translateY: heroTranslateY }, { scale: heroScale }],
+                transform: [
+                  { translateY: heroTranslateY },
+                  { scale: heroScale },
+                ],
               },
             ]}
           >
@@ -458,7 +599,12 @@ export default function ProfileBase({
                 ))}
               </ScrollView>
             ) : (
-              <View style={[s.heroFallback, { height: HERO_H + HERO_H * PARALLAX_FACTOR }]}>
+              <View
+                style={[
+                  s.heroFallback,
+                  { height: HERO_H + HERO_H * PARALLAX_FACTOR },
+                ]}
+              >
                 <Text style={s.heroFallbackText}>
                   {firstName[0]}
                   {lastName[0]}
@@ -524,7 +670,11 @@ export default function ProfileBase({
           >
             {locationLabel && (
               <View style={s.locRow}>
-                <MapPin size={9} color="rgba(255,255,255,0.50)" strokeWidth={2} />
+                <MapPin
+                  size={9}
+                  color="rgba(255,255,255,0.50)"
+                  strokeWidth={2}
+                />
                 <Text style={s.locText}>{locationLabel.toUpperCase()}</Text>
               </View>
             )}
@@ -537,18 +687,29 @@ export default function ProfileBase({
 
         {/* ── BODY ──────────────────────────────────────────────────────── */}
         <View style={[s.body, { minHeight: SCREEN_H - HERO_H + 280 }]}>
-
           {/* Stats */}
           <View style={s.statsRow}>
-            <TouchableOpacity style={s.statItem} activeOpacity={0.75} onPress={onFollowersPress}>
-              <Text style={[s.statVal2, onFollowersPress && { color: C.textSub }]}>
+            <TouchableOpacity
+              style={s.statItem}
+              activeOpacity={0.75}
+              onPress={onFollowersPress}
+            >
+              <Text
+                style={[s.statVal2, onFollowersPress && { color: C.textSub }]}
+              >
                 {fmt(followerCount)}
               </Text>
               <Text style={s.statKey}>FOLLOWERS</Text>
             </TouchableOpacity>
             <View style={s.statDiv} />
-            <TouchableOpacity style={s.statItem} activeOpacity={0.75} onPress={onFollowingPress}>
-              <Text style={[s.statVal2, onFollowingPress && { color: C.textSub }]}>
+            <TouchableOpacity
+              style={s.statItem}
+              activeOpacity={0.75}
+              onPress={onFollowingPress}
+            >
+              <Text
+                style={[s.statVal2, onFollowingPress && { color: C.textSub }]}
+              >
                 {fmt(followingCount)}
               </Text>
               <Text style={s.statKey}>FOLLOWING</Text>
@@ -571,24 +732,49 @@ export default function ProfileBase({
                   activeOpacity={0.82}
                   onPress={onFollowPress}
                 >
-                  <Text style={[s.btnPrimaryText, isFollowing && { color: C.textSub }]}>
+                  <Text
+                    style={[
+                      s.btnPrimaryText,
+                      isFollowing && { color: C.textSub },
+                    ]}
+                  >
                     {isFollowing ? "FOLLOWING" : "FOLLOW"}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onMessagePress}>
-                  <MessageCircle size={16} color={C.textSub} strokeWidth={1.8} />
+                <TouchableOpacity
+                  style={s.btnIcon}
+                  activeOpacity={0.7}
+                  onPress={onMessagePress}
+                >
+                  <MessageCircle
+                    size={16}
+                    color={C.textSub}
+                    strokeWidth={1.8}
+                  />
                 </TouchableOpacity>
-                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onSharePress}>
+                <TouchableOpacity
+                  style={s.btnIcon}
+                  activeOpacity={0.7}
+                  onPress={onSharePress}
+                >
                   <Share2 size={16} color={C.textSub} strokeWidth={1.8} />
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <TouchableOpacity style={s.btnEdit} activeOpacity={0.82} onPress={onEditPress}>
+                <TouchableOpacity
+                  style={s.btnEdit}
+                  activeOpacity={0.82}
+                  onPress={onEditPress}
+                >
                   <Edit3 size={13} color="#fff" strokeWidth={2.2} />
                   <Text style={s.btnEditText}>EDIT PROFILE</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.btnIcon} activeOpacity={0.7} onPress={onSharePress}>
+                <TouchableOpacity
+                  style={s.btnIcon}
+                  activeOpacity={0.7}
+                  onPress={onSharePress}
+                >
                   <Share2 size={16} color={C.textSub} strokeWidth={1.8} />
                 </TouchableOpacity>
               </>
@@ -603,7 +789,12 @@ export default function ProfileBase({
                   const cfg = SOCIAL_CFG[sl.platform];
                   if (!cfg) return null;
                   return (
-                    <SocialIcon key={sl.platform} platform={sl.platform} color={cfg.color} size={20} />
+                    <SocialIcon
+                      key={sl.platform}
+                      platform={sl.platform}
+                      color={cfg.color}
+                      size={20}
+                    />
                   );
                 })}
               </View>
@@ -620,7 +811,9 @@ export default function ProfileBase({
               <View style={s.metaRow}>
                 <MapPin size={13} color={C.textMuted} strokeWidth={2} />
                 <Text style={s.metaKey}>Location</Text>
-                <Text style={[s.metaVal, { color: C.coral }]}>{locationLabel}</Text>
+                <Text style={[s.metaVal, { color: C.coral }]}>
+                  {locationLabel}
+                </Text>
               </View>
             )}
             {memberSince && (
@@ -635,7 +828,12 @@ export default function ProfileBase({
             <View style={s.rateWrap}>
               <View style={s.rateHeader}>
                 <Text style={s.metaKey}>Response rate</Text>
-                <Text style={[s.metaVal, { color: responseRate >= 80 ? "#22C55E" : C.coral }]}>
+                <Text
+                  style={[
+                    s.metaVal,
+                    { color: responseRate >= 80 ? "#22C55E" : C.coral },
+                  ]}
+                >
                   {responseRate}%
                 </Text>
               </View>
@@ -675,10 +873,18 @@ export default function ProfileBase({
                   return (
                     <View
                       key={code}
-                      style={[s.langPill, { backgroundColor: color.bg, borderColor: color.border }]}
+                      style={[
+                        s.langPill,
+                        {
+                          backgroundColor: color.bg,
+                          borderColor: color.border,
+                        },
+                      ]}
                     >
                       <Text style={s.langFlag}>{LANG_FLAG[up] ?? "🌐"}</Text>
-                      <Text style={[s.langCode, { color: color.text }]}>{up}</Text>
+                      <Text style={[s.langCode, { color: color.text }]}>
+                        {up}
+                      </Text>
                     </View>
                   );
                 })}
@@ -687,27 +893,43 @@ export default function ProfileBase({
             </>
           )}
 
-          {/* ── RECENT ACTIVITY — now uses MyEventCard ─────────────────── */}
-          {recentEvents.length > 0 && (
-            <>
-              <View style={s.actHeader}>
-                <View style={s.actTitleRow}>
-                  <View style={s.actDot} />
-                  <Text style={s.actHeaderLabel}>RECENT ACTIVITY</Text>
-                </View>
-                <TouchableOpacity activeOpacity={0.6} onPress={onSeeAllActivityPress}>
+          {/* ── RECENT ACTIVITY ─────────────────────────────────────────── */}
+          <>
+            <View style={s.actHeader}>
+              <View style={s.actTitleRow}>
+                <View style={s.actDot} />
+                <Text style={s.actHeaderLabel}>RECENT ACTIVITY</Text>
+                {eventsLoading && (
+                  <ActivityIndicator
+                    size="small"
+                    color={C.coral}
+                    style={{ marginLeft: 6 }}
+                  />
+                )}
+              </View>
+              {!eventsLoading && recentEvents.length > 0 && (
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={onSeeAllActivityPress}
+                >
                   <Text style={s.seeAll}>SEE ALL →</Text>
                 </TouchableOpacity>
-              </View>
+              )}
+            </View>
 
-              <View style={s.actList}>
-                {recentEvents.map((ev) => (
+            <View style={s.actList}>
+              {eventsLoading ? (
+                // Skeleton placeholders
+                Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                  <SkeletonEventCard key={`sk-${i}`} />
+                ))
+              ) : recentEvents.length > 0 ? (
+                // Real event cards
+                recentEvents.map((ev) => (
                   <MyEventCard
                     key={String(ev.id)}
                     eventId={String(ev.id)}
                     title={ev.name}
-                    // Prefer real ISO string from _startScheduledTo if provided;
-                    // fall back to constructing one from the display date + time.
                     startScheduledTo={
                       ev._startScheduledTo ??
                       (ev.date && ev.date !== "TBD"
@@ -724,41 +946,82 @@ export default function ProfileBase({
                       // TODO: navigate to event detail
                     }}
                   />
-                ))}
-              </View>
-            </>
-          )}
+                ))
+              ) : (
+                // Empty state
+                <EmptyEventsState isOwnProfile={mode === "own"} />
+              )}
+            </View>
+          </>
 
           {footer}
         </View>
       </Animated.ScrollView>
 
       {/* ── ADAPTIVE NAV BAR ─────────────────────────────────────────────── */}
-      <View style={[s.navContainer, { paddingTop: insets.top }]} pointerEvents="box-none">
+      <View
+        style={[s.navContainer, { paddingTop: insets.top }]}
+        pointerEvents="box-none"
+      >
         <Animated.View style={[s.navWhiteBg, { opacity: navBgOpacity }]} />
         <Animated.View style={[s.navBorderLine, { opacity: navBgOpacity }]} />
 
         <View style={s.navInner}>
-          <TouchableOpacity style={s.navBtn} activeOpacity={0.75} onPress={onClosePress}>
-            <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navLightIconOpacity }]}>
+          <TouchableOpacity
+            style={s.navBtn}
+            activeOpacity={0.75}
+            onPress={onClosePress}
+          >
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                s.navIconCenter,
+                { opacity: navLightIconOpacity },
+              ]}
+            >
               <ArrowLeft size={15} color="#fff" strokeWidth={2.5} />
             </Animated.View>
-            <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navDarkIconOpacity }]}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                s.navIconCenter,
+                { opacity: navDarkIconOpacity },
+              ]}
+            >
               <ArrowLeft size={15} color={C.ink} strokeWidth={2.5} />
             </Animated.View>
           </TouchableOpacity>
 
-          <Animated.Text style={[s.navUsername, { opacity: navTitleOpacity }]} numberOfLines={1}>
+          <Animated.Text
+            style={[s.navUsername, { opacity: navTitleOpacity }]}
+            numberOfLines={1}
+          >
             @{username}
           </Animated.Text>
 
           <View style={s.navRight}>
             {mode === "own" && (
-              <TouchableOpacity style={s.navBtn} activeOpacity={0.75} onPress={onEditPress}>
-                <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navLightIconOpacity }]}>
+              <TouchableOpacity
+                style={s.navBtn}
+                activeOpacity={0.75}
+                onPress={onEditPress}
+              >
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    s.navIconCenter,
+                    { opacity: navLightIconOpacity },
+                  ]}
+                >
                   <Edit3 size={13} color="#fff" strokeWidth={2} />
                 </Animated.View>
-                <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navDarkIconOpacity }]}>
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    s.navIconCenter,
+                    { opacity: navDarkIconOpacity },
+                  ]}
+                >
                   <Edit3 size={13} color={C.ink} strokeWidth={2} />
                 </Animated.View>
               </TouchableOpacity>
@@ -768,10 +1031,22 @@ export default function ProfileBase({
               activeOpacity={0.75}
               onPress={mode === "own" ? onSharePress : onMorePress}
             >
-              <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navLightIconOpacity }]}>
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  s.navIconCenter,
+                  { opacity: navLightIconOpacity },
+                ]}
+              >
                 <MoreHorizontal size={15} color="#fff" strokeWidth={2} />
               </Animated.View>
-              <Animated.View style={[StyleSheet.absoluteFill, s.navIconCenter, { opacity: navDarkIconOpacity }]}>
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  s.navIconCenter,
+                  { opacity: navDarkIconOpacity },
+                ]}
+              >
                 <MoreHorizontal size={15} color={C.ink} strokeWidth={2} />
               </Animated.View>
             </TouchableOpacity>
@@ -791,67 +1066,219 @@ const s = StyleSheet.create({
   heroContainer: { width: W, overflow: "hidden", backgroundColor: C.heroBg },
   heroImageWrapper: { position: "absolute", top: 0, left: 0, width: W },
   heroImg: { width: W },
-  heroFallback: { width: W, backgroundColor: "#cccccc", alignItems: "center", justifyContent: "center" },
-  heroFallbackText: { fontSize: 100, fontWeight: "900", color: "#555555", letterSpacing: -4 },
+  heroFallback: {
+    width: W,
+    backgroundColor: "#cccccc",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroFallbackText: {
+    fontSize: 100,
+    fontWeight: "900",
+    color: "#555555",
+    letterSpacing: -4,
+  },
   scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   loadingIndicator: {
-    position: "absolute", top: 60, left: 0, right: 0, height: 40,
-    alignItems: "center", justifyContent: "center", zIndex: 50,
+    position: "absolute",
+    top: 60,
+    left: 0,
+    right: 0,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
   },
   dotsRow: {
-    position: "absolute", bottom: 100, left: 0, right: 0,
-    flexDirection: "row", justifyContent: "center", gap: 5,
+    position: "absolute",
+    bottom: 100,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 5,
   },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: "rgba(255,255,255,0.28)" },
+  dot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.28)",
+  },
   dotActive: { width: 16, backgroundColor: "#fff" },
   addPhotoBtn: {
-    position: "absolute", right: 16,
-    backgroundColor: "rgba(255,255,255,0.10)", borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)", borderRadius: 7,
-    paddingHorizontal: 10, paddingVertical: 5,
+    position: "absolute",
+    right: 16,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  addPhotoText: { fontSize: 9, fontWeight: "800", color: "#fff", letterSpacing: 1.2 },
-  heroIdentity: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: SIDE, paddingBottom: 24 },
-  locRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 9 },
-  locText: { fontSize: 9, fontWeight: "700", color: "rgba(255,255,255,0.45)", letterSpacing: 1.5 },
-  heroHandle: { fontSize: 24, fontWeight: "900", color: "#fff", letterSpacing: -0.5, marginBottom: 6, maxWidth: "100%", flexShrink: 1 },
-  heroName: { fontSize: 27, fontWeight: "800", color: "#fff", letterSpacing: -0.6, marginBottom: 12, flexWrap: "wrap" },
+  addPhotoText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 1.2,
+  },
+  heroIdentity: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: SIDE,
+    paddingBottom: 24,
+  },
+  locRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 9,
+  },
+  locText: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 1.5,
+  },
+  heroHandle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: -0.5,
+    marginBottom: 6,
+    maxWidth: "100%",
+    flexShrink: 1,
+  },
+  heroName: {
+    fontSize: 27,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: -0.6,
+    marginBottom: 12,
+    flexWrap: "wrap",
+  },
 
   body: { backgroundColor: C.bg, paddingHorizontal: SIDE, paddingTop: 22 },
 
-  statsRow: { flexDirection: "row", justifyContent: "space-between", marginVertical: 20, marginBottom: 28 },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginVertical: 20,
+    marginBottom: 28,
+  },
   statItem: { flex: 1, alignItems: "center" },
-  statVal: { fontSize: 38, fontWeight: "900", color: C.ink, letterSpacing: -1.2, lineHeight: 38 },
-  statVal2: { fontSize: 38, fontWeight: "900", color: C.text, letterSpacing: -1.2, lineHeight: 38 },
-  statKey: { fontSize: 8, fontWeight: "700", color: C.textMuted, letterSpacing: 1.6, marginTop: 4 },
-  statDiv: { width: 1, height: 34, backgroundColor: C.border, marginHorizontal: 14 },
+  statVal: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: C.ink,
+    letterSpacing: -1.2,
+    lineHeight: 38,
+  },
+  statVal2: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: C.text,
+    letterSpacing: -1.2,
+    lineHeight: 38,
+  },
+  statKey: {
+    fontSize: 8,
+    fontWeight: "700",
+    color: C.textMuted,
+    letterSpacing: 1.6,
+    marginTop: 4,
+  },
+  statDiv: {
+    width: 1,
+    height: 34,
+    backgroundColor: C.border,
+    marginHorizontal: 14,
+  },
 
-  ctaRow: { flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 24 },
+  ctaRow: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+    marginBottom: 24,
+  },
   btnPrimary: {
-    flex: 1, height: 50, borderRadius: 12, backgroundColor: C.coral,
-    alignItems: "center", justifyContent: "center",
-    shadowColor: C.coral, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28, shadowRadius: 14, elevation: 10,
+    flex: 1,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: C.coral,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: C.coral,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 10,
   },
-  btnOutline: { backgroundColor: "transparent", borderWidth: 2, borderColor: C.textSub },
-  btnPrimaryText: { fontSize: 13, fontWeight: "900", color: "#fff", letterSpacing: 1.4 },
+  btnOutline: {
+    backgroundColor: "transparent",
+    borderWidth: 2,
+    borderColor: C.textSub,
+  },
+  btnPrimaryText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 1.4,
+  },
   btnEdit: {
-    flex: 1, height: 50, borderRadius: 12, backgroundColor: C.ink,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 14, elevation: 8,
+    flex: 1,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: C.ink,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    elevation: 8,
   },
-  btnEditText: { fontSize: 13, fontWeight: "900", color: "#fff", letterSpacing: 1.4 },
+  btnEditText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 1.4,
+  },
   btnIcon: {
-    width: 50, height: 50, borderRadius: 12, borderWidth: 2, borderColor: C.text,
-    backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: C.text,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
 
   bodySocialSection: { marginVertical: 8 },
-  bodySocialIcons: { flexDirection: "row", paddingHorizontal: SIDE, gap: 24, justifyContent: "flex-start" },
+  bodySocialIcons: {
+    flexDirection: "row",
+    paddingHorizontal: SIDE,
+    gap: 24,
+    justifyContent: "flex-start",
+  },
 
   sep: { height: 1, backgroundColor: C.border, marginVertical: 18 },
-  label: { fontSize: 11, fontWeight: "800", color: C.text, letterSpacing: 0.7, marginBottom: 10 },
+  label: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: C.text,
+    letterSpacing: 0.7,
+    marginBottom: 10,
+  },
 
   bio: { fontSize: 14, color: C.textSub, lineHeight: 22, marginBottom: 16 },
   metaList: { gap: 11, marginBottom: 4 },
@@ -859,37 +1286,106 @@ const s = StyleSheet.create({
   metaKey: { flex: 1, fontSize: 13, color: C.textMuted, fontWeight: "500" },
   metaVal: { fontSize: 13, fontWeight: "700", color: C.ink },
   rateWrap: { marginTop: 12 },
-  rateHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
-  rateTrack: { height: 3, borderRadius: 2, backgroundColor: C.surfaceAlt, overflow: "hidden" },
+  rateHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  rateTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: C.surfaceAlt,
+    overflow: "hidden",
+  },
   rateFill: { height: 3, borderRadius: 2 },
 
-  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 4 },
+  chipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    marginBottom: 4,
+  },
   langRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 4 },
   langPill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, borderWidth: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 2,
     backgroundColor: C.surface,
-    shadowColor: "#000", shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   langFlag: { fontSize: 14 },
   langCode: { fontSize: 9, fontWeight: "800", letterSpacing: 0.6 },
 
-  // ── Recent Activity ────────────────────────────────────────────────────────
-  actHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  // ── Recent Activity ─────────────────────────────────────────────────────
+  actHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
   actTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   actDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.coral },
-  actHeaderLabel: { fontSize: 8, fontWeight: "900", color: C.ink, letterSpacing: 2.4 },
-  seeAll: { fontSize: 9, fontWeight: "800", color: C.coral, letterSpacing: 0.6 },
-  // Cards stack vertically with a gap
+  actHeaderLabel: {
+    fontSize: 8,
+    fontWeight: "900",
+    color: C.ink,
+    letterSpacing: 2.4,
+  },
+  seeAll: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: C.coral,
+    letterSpacing: 0.6,
+  },
   actList: { gap: 9, marginBottom: 4 },
 
-  // ── Nav bar ───────────────────────────────────────────────────────────────
-  navContainer: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 100 },
+  // ── Nav bar ────────────────────────────────────────────────────────────
+  navContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+  },
   navWhiteBg: { ...StyleSheet.absoluteFillObject, backgroundColor: C.bg },
-  navBorderLine: { position: "absolute", bottom: 0, left: 0, right: 0, height: 1, backgroundColor: C.border },
-  navInner: { flexDirection: "row", alignItems: "center", paddingHorizontal: 6, paddingVertical: 8 },
-  navBtn: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  navBorderLine: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: C.border,
+  },
+  navInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  navBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
   navIconCenter: { alignItems: "center", justifyContent: "center" },
-  navUsername: { flex: 1, textAlign: "center", fontSize: 13, fontWeight: "900", color: C.ink, letterSpacing: 0.5 },
+  navUsername: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "900",
+    color: C.ink,
+    letterSpacing: 0.5,
+  },
   navRight: { flexDirection: "row" },
 });

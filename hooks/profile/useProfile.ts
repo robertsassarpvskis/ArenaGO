@@ -1,4 +1,3 @@
-import { getEventById } from "@/hooks/events/getEvents";
 import { useCallback, useEffect, useState } from "react";
 
 /* ===================== TYPES ===================== */
@@ -36,34 +35,6 @@ export interface Profile {
   participatedEventsCount?: number;
 }
 
-// ── Participated events ────────────────────────────────────────────────────────
-
-/** Lightweight stub returned by /participated-events */
-export interface ParticipationStub {
-  resourceSummary: {
-    eventId: string;
-    eventName: string;
-  };
-  participationPeriod: {
-    joinedAt: string;
-    leftAt: string | null;
-    isKicked: boolean | null;
-  };
-}
-
-/** Full event card data for displaying in the profile activity section */
-export interface ParticipatedEventCard {
-  eventId: string;
-  title: string;
-  /** ISO date string */
-  startScheduledTo?: string;
-  locationName?: string;
-  currentCount: number;
-  maxCount?: number;
-  categoryName?: string;
-  joinedAt: string;
-}
-
 /* ===================== CONFIG ===================== */
 
 const API_URL = "http://217.182.74.113:30080/api";
@@ -75,7 +46,7 @@ export function useProfile(userName: string, token?: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /* ---------- FETCH PROFILE ---------- */
+  /* ---------- FETCH ---------- */
 
   const fetchProfile = useCallback(async () => {
     if (!userName) return;
@@ -135,110 +106,4 @@ export function useProfile(userName: string, token?: string) {
     refetch: fetchProfile,
     incrementFollowerCount,
   };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// useParticipatedEventsFull
-//
-// 1. Fetches the participation stubs from /api/Users/{username}/participated-events
-// 2. Enriches each stub with the full event detail via getEventById
-// 3. Returns a ParticipatedEventCard[] ready for MyEventCard / ProfileBase
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function useParticipatedEventsFull(
-  userName: string,
-  token?: string,
-  limit = 6,
-) {
-  const [events, setEvents] = useState<ParticipatedEventCard[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetch_ = useCallback(async () => {
-    if (!userName || !token) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Step 1 — get participation stubs
-      const res = await fetch(
-        `${API_URL}/Users/${encodeURIComponent(userName)}/participated-events`,
-        {
-          headers: {
-            accept: "text/plain",
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      if (!res.ok) throw new Error(`Participations fetch failed: ${res.status}`);
-
-      const body = await res.json();
-      const stubs: ParticipationStub[] = body?.participations ?? [];
-
-      if (stubs.length === 0) {
-        setEvents([]);
-        return;
-      }
-
-      // Step 2 — enrich up to `limit` stubs with full event data in parallel
-      const sliced = stubs.slice(0, limit);
-
-      const enriched = await Promise.allSettled(
-        sliced.map(async (stub): Promise<ParticipatedEventCard> => {
-          try {
-            const full = await getEventById(
-              stub.resourceSummary.eventId,
-              token,
-            );
-            return {
-              eventId: full.eventId,
-              title: full.title,
-              startScheduledTo: full.startScheduledTo ?? undefined,
-              locationName: full.locationName ?? undefined,
-              currentCount: full.participantsSummary?.currentCount ?? 0,
-              maxCount: full.participantsSummary?.maxCount ?? undefined,
-              categoryName: full.interest?.name ?? undefined,
-              joinedAt: stub.participationPeriod.joinedAt,
-            };
-          } catch {
-            // Graceful degradation: use stub data if detail fetch fails
-            return {
-              eventId: stub.resourceSummary.eventId,
-              title: stub.resourceSummary.eventName,
-              currentCount: 0,
-              joinedAt: stub.participationPeriod.joinedAt,
-            };
-          }
-        }),
-      );
-
-      const cards: ParticipatedEventCard[] = enriched
-        .filter(
-          (r): r is PromiseFulfilledResult<ParticipatedEventCard> =>
-            r.status === "fulfilled",
-        )
-        .map((r) => r.value);
-
-      // Most recent joined first
-      cards.sort(
-        (a, b) =>
-          new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime(),
-      );
-
-      setEvents(cards);
-    } catch (err: any) {
-      console.error("Participated events fetch error:", err);
-      setError(err.message ?? "Failed to load participated events");
-    } finally {
-      setLoading(false);
-    }
-  }, [userName, token, limit]);
-
-  useEffect(() => {
-    fetch_();
-  }, [fetch_]);
-
-  return { events, loading, error, refetch: fetch_ };
 }

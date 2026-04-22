@@ -65,6 +65,7 @@ export interface EventCardProps {
   category?: string;
   categoryIconUrl?: string;
   interest?: InterestData;
+  customInterestName?: string | null;
   time?: number;
   attendees?: number;
   location?: string;
@@ -213,9 +214,9 @@ function TimeRow({
   accent: string;
   surface: Surface;
 }) {
-  const chipBg = surface === "image" ? accent : `${accent}18`;
+  const chipBg = surface === "image" ? accent : `${accent}`;
   const chipColor = surface === "image" ? "#fff" : accent;
-  const dateColor = surface === "image" ? "rgba(255,255,255,0.62)" : "#aaa";
+  const dateColor = surface === "image" ? "rgba(255,255,255)" : "#aaa";
   return (
     <View style={tr.row}>
       <View style={[tr.chip, { backgroundColor: chipBg }]}>
@@ -351,7 +352,7 @@ function CardB(p: SharedCardProps) {
   return (
     <View style={[s.card, vb.card]}>
       <Text style={vb.ghost} aria-hidden>
-        {p.attendees > 0 ? String(p.attendees) : "0"}km
+        {p.timeFormat}
       </Text>
       <View style={vb.topRow}>
         {p.interest ? (
@@ -371,12 +372,13 @@ function CardB(p: SharedCardProps) {
       <Text style={vb.title} numberOfLines={2}>
         {p.title.toUpperCase()}
       </Text>
-      <TimeRow
-        timeLabel={p.timeLabel}
-        timeFormat={p.timeFormat}
-        accent={p.accent}
-        surface="light"
-      />
+      <View style={tr.row}>
+        <View style={[tr.chip, { backgroundColor: p.accent + "18" }]}>
+          <Text style={[tr.chipText, { color: p.accent }]}>
+            {p.timeLabel.toUpperCase()}
+          </Text>
+        </View>
+      </View>
       <View style={[vb.rule, { backgroundColor: `${p.accent}22` }]} />
       <View style={s.metaRow}>
         <View style={s.metaLeft}>
@@ -572,6 +574,7 @@ export default function EventCard({
   category: propCategory,
   categoryIconUrl,
   interest: propInterest,
+  customInterestName,
   time,
   attendees = 0,
   location,
@@ -589,36 +592,75 @@ export default function EventCard({
     typeof image === "string" ? image : ((image as any)?.url ?? undefined);
   const hasImage = !!imageUri && !imageError;
 
-  const category = useMemo(() => {
-    if (propCategory) return propCategory;
-    if (propInterest?.name) return propInterest.name;
+  // ─── FIX: Resolve the effective display name for custom interests ──────────
+  // When interest.name === "Custom", the API signals that customInterestName
+  // holds the real user-defined label. We always prefer customInterestName
+  // when it is a non-empty string, regardless of the interest.name value.
+  const isCustomInterest =
+    propInterest?.name?.toLowerCase() === "custom" ||
+    (!!customInterestName && customInterestName.trim().length > 0);
+
+  const effectiveName: string | undefined =
+    customInterestName?.trim() || undefined;
+
+  // ─── category: the string shown in pills, stubs, and fallback labels ──────
+  // Priority: customInterestName → propCategory → interest.name (non-"Custom")
+  // → deterministic hash fallback
+  const category = useMemo<string>(() => {
+    // 1. Custom interest name always wins
+    if (effectiveName) return effectiveName;
+    // 2. Explicit category prop (if not "Custom")
+    if (propCategory && propCategory.toLowerCase() !== "custom")
+      return propCategory;
+    // 3. Interest name (skip "Custom" sentinel)
+    if (propInterest?.name && propInterest.name.toLowerCase() !== "custom")
+      return propInterest.name;
+    // 4. Deterministic hash fallback (avoids showing "Custom" to users)
     const keys = Object.keys(CATEGORY_COLORS);
     if (!id) return keys[0];
     let h = 0;
     for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h);
     return keys[Math.abs(h) % keys.length];
-  }, [id, propCategory, propInterest?.name]);
+  }, [id, propCategory, propInterest?.name, effectiveName]);
 
-  const accent = CATEGORY_COLORS[category] ?? DEFAULT_ACCENT;
+  // ─── accent: colour derived from known categories; custom gets teal from API color ─
+  const accent = useMemo<string>(() => {
+    // Named category hit
+    if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category];
+    // Custom interest: use the API-supplied color if present
+    if (isCustomInterest && propInterest?.color) {
+      const { r, g, b } = propInterest.color;
+      return `rgb(${r},${g},${b})`;
+    }
+    return DEFAULT_ACCENT;
+  }, [category, isCustomInterest, propInterest?.color]);
+
   const timeLabel = getTimeLabel(time);
   const timeFormat = formatEventTime(time);
 
-  // Build interest object if we have icon URL or use provided interest
+  // ─── interest object passed to InterestBadge ─────────────────────────────
+  // Always override name/label with effectiveName so the badge never shows
+  // "Custom" as its label. The icon from the API is preserved as-is.
   const interest = useMemo<InterestData | undefined>(() => {
-    if (propInterest) return propInterest;
+    if (propInterest) {
+      return {
+        ...propInterest,
+        // If we have a custom name, use it; otherwise keep original name
+        name: effectiveName ?? propInterest.name,
+        label: effectiveName ?? propInterest.label ?? propInterest.name,
+      };
+    }
     if (categoryIconUrl) {
       return {
         id: `${id}-interest`,
         name: category,
         label: category,
-        icon: {
-          url: categoryIconUrl,
-        },
+        icon: { url: categoryIconUrl },
         color: null,
       };
     }
     return undefined;
-  }, [propInterest, categoryIconUrl, id, category]);
+  }, [propInterest, categoryIconUrl, id, category, effectiveName]);
 
   const priceStr = useMemo((): string | null => {
     if (!price) return null;
@@ -647,7 +689,10 @@ export default function EventCard({
     }).start();
   }, [scaleAnim]);
 
-  const handlePress = useCallback(() => onPress?.(id), [id, onPress]);
+  const handlePress = useCallback(() => {
+    onPress?.(id);
+    console.log("EventCard pressed:", id);
+  }, [id, onPress]);
   const handleJoin = useCallback(
     (e: any) => {
       e.stopPropagation();
@@ -807,8 +852,8 @@ const tr = StyleSheet.create({
     marginBottom: 13,
   },
   chip: { paddingHorizontal: 8.5, paddingVertical: 3.5, borderRadius: 7 },
-  chipText: { fontSize: 9.5, fontWeight: "900", letterSpacing: 1.15 },
-  date: { fontSize: 12, fontWeight: "500" },
+  chipText: { fontSize: 14, fontWeight: "900", letterSpacing: 1.15 },
+  date: { fontSize: 19, fontWeight: "800" },
 });
 
 const me = StyleSheet.create({
@@ -849,7 +894,6 @@ const s = StyleSheet.create({
 });
 
 const va = StyleSheet.create({
-  // Sophisticated gradient scrim
   topScrim: {
     position: "absolute",
     top: 0,
@@ -998,7 +1042,6 @@ const vd = StyleSheet.create({
 });
 
 const ve = StyleSheet.create({
-  // Sophisticated scrim for image + price
   topScrim: {
     position: "absolute",
     top: 0,
